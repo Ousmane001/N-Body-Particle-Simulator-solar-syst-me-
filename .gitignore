@@ -1,0 +1,12 @@
+.DS_Store
+/front/node_modules/
+/front/dist/
+/front/*.tsbuildinfo
+/moteur/build*/
+/build/
+*.log
+*.zip
+__pycache__/
+.pytest_cache/
+/moteur/tests
+

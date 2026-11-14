@@ -1,0 +1,83 @@
+[
+  {
+    "id": "sun",
+    "name": "Sun",
+    "radius": 0.78,
+    "color": "#ffb64d",
+    "texture": "2k_sun.jpg",
+    "orbit": 0,
+    "tilt": 0.12
+  },
+  {
+    "id": "mercury",
+    "name": "Mercury",
+    "radius": 0.15,
+    "color": "#b6aaa1",
+    "texture": "2k_mercury.jpg",
+    "orbit": 1.8,
+    "tilt": 0.01
+  },
+  {
+    "id": "venus",
+    "name": "Venus",
+    "radius": 0.27,
+    "color": "#e6c48b",
+    "texture": "2k_venus_atmosphere.jpg",
+    "orbit": 2.7,
+    "tilt": 0.05
+  },
+  {
+    "id": "earth",
+    "name": "Earth",
+    "radius": 0.32,
+    "color": "#83bbf4",
+    "texture": "2k_earth_daymap.jpg",
+    "orbit": 3.7,
+    "tilt": 0.41
+  },
+  {
+    "id": "mars",
+    "name": "Mars",
+    "radius": 0.24,
+    "color": "#df9472",
+    "texture": "2k_mars.jpg",
+    "orbit": 4.8,
+    "tilt": 0.44
+  },
+  {
+    "id": "jupiter",
+    "name": "Jupiter",
+    "radius": 0.66,
+    "color": "#d7b79a",
+    "texture": "2k_jupiter.jpg",
+    "orbit": 6.4,
+    "tilt": 0.05
+  },
+  {
+    "id": "saturn",
+    "name": "Saturn",
+    "radius": 0.55,
+    "color": "#d8c698",
+    "texture": "2k_saturn.jpg",
+    "orbit": 8.5,
+    "tilt": 0.47
+  },
+  {
+    "id": "uranus",
+    "name": "Uranus",
+    "radius": 0.4,
+    "color": "#9cd9dd",
+    "texture": "2k_uranus.jpg",
+    "orbit": 10.8,
+    "tilt": 1.71
+  },
+  {
+    "id": "neptune",
+    "name": "Neptune",
+    "radius": 0.38,
+    "color": "#628be8",
+    "texture": "2k_neptune.jpg",
+    "orbit": 13,
+    "tilt": 0.49
+  }
+]
