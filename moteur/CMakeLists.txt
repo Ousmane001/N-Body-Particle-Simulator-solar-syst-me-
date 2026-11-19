@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(nbody_gpu VERSION 0.1.0 LANGUAGES CXX)
+project(nbody_gpu VERSION 0.1.0 LANGUAGES CXX CUDA)
 include(CTest)
 option(NBODY_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
 
@@ -23,6 +23,20 @@ if(NBODY_SANITIZERS)
     target_compile_options(nbody_cpu_reference PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
     target_link_options(nbody_cpu_reference PUBLIC -fsanitize=address,undefined)
 endif()
+
+add_library(nbody_gpu_backend 
+    src/gpu/forces.cu
+)
+target_include_directories(nbody_gpu_backend PUBLIC include)
+target_compile_features(nbody_gpu_backend PUBLIC cxx_std_17)
+set_target_properties(nbody_gpu_backend PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_EXTENSIONS OFF
+    CUDA_SEPARABLE_COMPILATION ON
+)
+target_link_libraries(nbody_gpu_backend PUBLIC nbody_cpu_reference)
+
 add_executable(nbody_cpu src/cpu/main.cpp)
 target_link_libraries(nbody_cpu PRIVATE nbody_cpu_reference)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
