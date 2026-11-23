@@ -1,3 +1,4 @@
+// Let the user select a body to follow in the simulation.
 import { useSimulationStore } from '../store/simulationStore'
 import { SOLAR_BODIES } from './scene/solarAppearance'
 import { Icon } from './Icons'

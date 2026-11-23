@@ -1,0 +1,73 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "CPU Release",
+      "binaryDir": "${sourceDir}/../build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE": "${sourceDir}/../build/release",
+        "NBODY_SANITIZERS": false,
+        "NBODY_CUDA": false
+      }
+    },
+    {
+      "name": "sanitize",
+      "displayName": "CPU Debug with ASan and UBSan",
+      "binaryDir": "${sourceDir}/../build/sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG": "${sourceDir}/../build/sanitize",
+        "NBODY_SANITIZERS": true,
+        "NBODY_CUDA": false
+      }
+    },
+    {
+      "name": "cuda",
+      "displayName": "CUDA Release",
+      "binaryDir": "${sourceDir}/../build/cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE": "${sourceDir}/../build/cuda",
+        "NBODY_SANITIZERS": false,
+        "NBODY_CUDA": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release"
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize",
+      "configuration": "Debug"
+    },
+    {
+      "name": "cuda",
+      "configurePreset": "cuda",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

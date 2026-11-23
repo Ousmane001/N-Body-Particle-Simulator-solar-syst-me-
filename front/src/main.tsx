@@ -1,3 +1,4 @@
+// Start the React app and load the shared styles.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

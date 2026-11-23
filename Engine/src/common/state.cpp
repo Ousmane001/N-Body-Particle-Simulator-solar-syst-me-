@@ -1,3 +1,4 @@
+// Create the body arrays and check that their values and physics settings are valid.
 #include "nbody/state.hpp"
 #include <cmath>
 #include <limits>

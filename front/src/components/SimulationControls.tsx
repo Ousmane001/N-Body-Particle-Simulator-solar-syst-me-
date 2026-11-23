@@ -1,3 +1,4 @@
+// Show the controls that play, pause, and reset the simulation.
 import { ScenarioBar } from './ScenarioBar'
 import { ControlPanel } from './ControlPanel'
 import { BodyNavigator } from './BodyNavigator'

@@ -1,3 +1,4 @@
+// Define the messages used by the browser and the live relay.
 export type ScenarioId = 'solar_system' | 'disk_galaxy' | 'galaxy_merger' | 'star_cluster'
 export interface GroupInfo { name: string; color: string; first: number; count: number }
 export interface LiveMetadata {

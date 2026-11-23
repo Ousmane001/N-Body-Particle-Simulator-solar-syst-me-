@@ -1,3 +1,4 @@
+// Advance the CPU simulation with the kick, drift, kick steps.
 #include "nbody/cpu.hpp"
 #include <cmath>
 #include <limits>

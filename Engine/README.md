@@ -1,9 +1,5 @@
-# Understanding the CPU engine
 
-This directory is an independent C++17 program. The code, comments and
-commands are in English. There is one force algorithm and one integrator.
-
-## Suggested reading order
+## Suggested reading order for the Mr Picard 
 
 1. `include/nbody/state.hpp` describes the data.
 2. `src/cpu/forces.cpp` calculates acceleration.
@@ -25,8 +21,8 @@ vx[i], vy[i], vz[i]    velocity of body i
 mass[i]               mass of body i
 ```
 
-All arrays have the same length. All values are doubles. Masses are positive
-and remain constant. A separate `Acceleration` holds ax, ay and az for each
+All arrays have the same length. All values are doubles (it is our choice !).
+A separate `Acceleration` holds ax, ay and az for each
 body. Units are normalized; G defaults to 1.
 
 This layout makes the data flow explicit and can later be copied into
@@ -46,11 +42,7 @@ Skip j = i: a body does not attract itself. The target mass is absent because
 acceleration is force divided by that mass. Softening epsilon keeps the force
 finite when bodies are very close.
 
-The outer loop writes one acceleration entry. Different target indices do
-not write to the same entry. This is the natural place to start your own
-naive GPU implementation: reason about what one target body needs to read
-and what it alone must write. Keep the CPU implementation as your reference.
-
+The outer loop writes one acceleration entry.
 The direct method visits N(N−1) directed pairs: its cost is O(N²).
 
 ## 3. Leapfrog KDK: simulation.cpp
@@ -69,7 +61,7 @@ step, positions and velocities describe the same integer time. The new
 acceleration is kept for the next step.
 
 All bodies must finish the drift before new forces are evaluated. Preserving
-this ordering will matter when you parallelize the implementation yourself.
+this ordering will matter when we parallelize the implementation.
 The physical dt is fixed; display speed changes how often steps are requested.
 
 Defaults: dt = 0.001, epsilon = 0.02, G = 1. A smaller dt may be necessary for
@@ -86,10 +78,6 @@ Random states use a defined generator and a fixed default seed of 42.
 - `galaxy`: a thick spiral disk around a dominant central mass.
 - `merger`: two to four inclined disks moving towards each other initially.
 
-Every subsequent movement comes from gravity and Leapfrog. These starting
-states are educational models rather than exact equilibrium distributions
-or astronomical observations. Use the same generated host state when you
-compare CPU and your future GPU implementation.
 
 ## 5. Live communication
 
@@ -109,8 +97,7 @@ flushed so the display receives them immediately. Nothing is saved to disk.
 
 The relay requests only one batch at a time. Pause means that no new batch
 is requested. Restart replaces the process with the same initial conditions.
-Diagnostics are not recomputed for every display update because energy also
-costs O(N²).
+
 
 To try the protocol from a terminal, from the project root:
 
@@ -118,7 +105,7 @@ To try the protocol from a terminal, from the project root:
 printf 'step 10\nstep 10\nquit\n' | moteur/build/nbody_cpu --scenario solar
 ```
 
-The live display is local CPU only. The browser communicates with the relay;
+The live display is local CPU only since we don't know how to connect it to nash like in production, so we use nash nodes only for computation . The browser communicates with the relay;
 it does not run or import any numerical C++ code.
 
 ## 6. Finite runs and validation
@@ -128,23 +115,6 @@ cmake -S moteur -B moteur/build -DCMAKE_BUILD_TYPE=Release
 cmake --build moteur/build -j 4
 ctest --test-dir moteur/build --output-on-failure
 moteur/build/nbody_cpu --scenario cluster --count 1024 --steps 20
-```
-
-`--steps N` performs a finite run and prints timing and energy values. Only
-integration steps are timed; setup, diagnostics and I/O are outside the timer.
-Use Release builds and identical parameters for performance comparisons.
-
-The 19 CTest checks cover analytical forces, softening, input validation,
-free motion, a circular orbit over ten periods, second-order convergence,
-energy, momentum, center of mass, angular momentum, time reversibility,
-reproducible starting states and command-line validation.
-
-For memory and undefined-behavior checks:
-
-```sh
-cmake -S moteur -B moteur/build-sanitize -DCMAKE_BUILD_TYPE=Debug -DNBODY_SANITIZERS=ON
-cmake --build moteur/build-sanitize -j 4
-ctest --test-dir moteur/build-sanitize --output-on-failure
 ```
 
 `src/cuda/` is reserved for your own implementation. No GPU kernel is included.

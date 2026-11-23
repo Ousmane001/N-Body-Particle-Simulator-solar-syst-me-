@@ -1,3 +1,4 @@
+// Declare the CPU simulation and its direct force calculation.
 #pragma once
 #include "nbody/state.hpp"
 #include <cstdint>
@@ -5,7 +6,6 @@
 namespace nbody {
 // Direct target/source loop, ascending indices, self interaction omitted.
 void direct_acceleration(const State& state, const Parameters& parameters, Acceleration& result);
-Diagnostics diagnostics(const State& state, const Parameters& parameters);
 
 // Positions AND velocities are synchronized at each integer time step.
 class CpuSimulation {

@@ -1,3 +1,4 @@
+/* Set the shared layout and visual styles for the simulation interface. */
 :root {
   font-family: 'Space Grotesk', system-ui, sans-serif;
   color: #eeeae4; background: #06080d; font-synthesis: none;

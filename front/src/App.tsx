@@ -1,3 +1,4 @@
+// Put the simulation view, controls, and navigation together.
 import { useEffect } from 'react'
 import { SimulationCanvas } from './components/SimulationCanvas'
 import { SimulationControls } from './components/SimulationControls'

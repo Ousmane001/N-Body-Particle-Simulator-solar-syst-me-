@@ -1,14 +1,13 @@
+// Build the CPU engine and start the local relay and front end.
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'vite'
 import { createLiveServer } from '../bridge/server.mjs'
 
-const root = fileURLToPath(new URL('../../', import.meta.url))
-const engine = fileURLToPath(new URL('../../moteur', import.meta.url))
-const build = fileURLToPath(new URL('../../moteur/build', import.meta.url))
+const engine = fileURLToPath(new URL('../../Engine', import.meta.url))
 // Build the independent executable, then start the communication relay and UI.
-execFileSync('cmake', ['-S', engine, '-B', build, '-DCMAKE_BUILD_TYPE=Release'], { cwd: root, stdio: 'inherit' })
-execFileSync('cmake', ['--build', build, '-j', '4'], { cwd: root, stdio: 'inherit' })
+execFileSync('cmake', ['--preset', 'release'], { cwd: engine, stdio: 'inherit' })
+execFileSync('cmake', ['--build', '--preset', 'release', '--target', 'nbody_cpu'], { cwd: engine, stdio: 'inherit' })
 const relay = createLiveServer()
 let vite
 try {

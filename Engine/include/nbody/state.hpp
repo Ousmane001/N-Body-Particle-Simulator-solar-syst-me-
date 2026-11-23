@@ -1,3 +1,4 @@
+// Define how we store body data, physics settings, and diagnostics.
 #pragma once
 #include <cstddef>
 #include <vector>
@@ -30,4 +31,6 @@ struct Diagnostics {
     Vec3 momentum, angular_momentum, center_of_mass;
     double total_energy() const noexcept { return kinetic_energy + potential_energy; }
 };
+
+Diagnostics diagnostics(const State& state, const Parameters& parameters);
 } // namespace nbody

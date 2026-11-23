@@ -1,3 +1,4 @@
+// Check the main user interactions in the browser.
 import assert from 'node:assert/strict'
 import { JSDOM } from 'jsdom'
 import { EventSource } from 'undici'

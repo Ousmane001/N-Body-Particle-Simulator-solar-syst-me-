@@ -1,9 +1,10 @@
+// Start the CPU engine and relay its live state to the browser.
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
-const executable = fileURLToPath(new URL('../../moteur/build/nbody_cpu', import.meta.url))
+const executable = fileURLToPath(new URL('../../build/release/nbody_cpu', import.meta.url))
 const scenarios = { solar_system: 'solar', star_cluster: 'cluster', disk_galaxy: 'galaxy', galaxy_merger: 'merger' }
 const speeds = [0.25, 0.5, 1, 2, 4]
 

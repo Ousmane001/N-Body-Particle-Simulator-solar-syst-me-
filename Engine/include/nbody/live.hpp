@@ -1,3 +1,4 @@
+// Declare the live connection between the CPU engine and the display.
 #pragma once
 #include "nbody/cpu.hpp"
 #include "nbody/initial_conditions.hpp"

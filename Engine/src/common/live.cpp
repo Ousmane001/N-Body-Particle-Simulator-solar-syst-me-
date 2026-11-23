@@ -1,3 +1,4 @@
+// Read live commands and send the current CPU state to the display as JSON.
 #include "nbody/live.hpp"
 #include <algorithm>
 #include <chrono>

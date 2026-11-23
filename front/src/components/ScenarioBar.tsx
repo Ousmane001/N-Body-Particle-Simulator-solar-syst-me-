@@ -1,3 +1,4 @@
+// Let the user switch between the available scenarios.
 import { SCENARIOS } from '../../bridge/types'
 import { useSimulationStore } from '../store/simulationStore'
 import { Icon } from './Icons'

@@ -1,3 +1,4 @@
+// Describe the options used to create the starting state.
 #pragma once
 #include "nbody/state.hpp"
 #include <cstdint>

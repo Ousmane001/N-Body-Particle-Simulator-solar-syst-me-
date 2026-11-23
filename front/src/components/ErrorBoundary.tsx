@@ -1,3 +1,4 @@
+// Show a fallback message when part of the interface crashes.
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 

@@ -1,3 +1,4 @@
+// Calculate the acceleration of each body from all the other bodies on the CPU.
 #include "nbody/cpu.hpp"
 #include <cmath>
 #include <stdexcept>

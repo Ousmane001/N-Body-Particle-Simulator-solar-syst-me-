@@ -1,9 +1,10 @@
+// Check that the CPU engine and the relay work together in live mode.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { EventSource } from 'undici'
 import { fileURLToPath } from 'node:url'
 import { createLiveServer } from '../bridge/server.mjs'
-const binary = fileURLToPath(new URL('../../moteur/build/nbody_cpu', import.meta.url))
+const binary = fileURLToPath(new URL('../../build/release/nbody_cpu', import.meta.url))
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 async function until(predicate, timeout = 5000) {
   const end = Date.now() + timeout

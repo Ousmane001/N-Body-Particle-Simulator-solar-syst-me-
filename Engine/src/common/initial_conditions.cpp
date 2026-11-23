@@ -1,5 +1,5 @@
+// Create the starting bodies for each scenario and center the system.
 #include "nbody/initial_conditions.hpp"
-#include "nbody/cpu.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -96,6 +96,7 @@ InitialConditions make_initial_conditions(const InitialOptions& o, const Paramet
     } else if (o.scenario == "cluster") {
         initial.state = State(o.count);
         auto& s = initial.state;
+        double total_weight = 0.0;
         for (std::size_t i = 0; i < s.size(); ++i) {
             const double r = 4.0 * std::cbrt(random.uniform());
             const double cosine = 2.0 * random.uniform() - 1.0;
@@ -103,8 +104,11 @@ InitialConditions make_initial_conditions(const InitialOptions& o, const Paramet
             const double angle = tau * random.uniform();
             s.x[i] = r * sine * std::cos(angle); s.y[i] = r * sine * std::sin(angle); s.z[i] = r * cosine;
             s.vx[i] = random.normal(); s.vy[i] = random.normal(); s.vz[i] = random.normal();
-            s.mass[i] = 100.0 / static_cast<double>(s.size());
+            s.mass[i] = 0.5 + random.uniform();
+            total_weight += s.mass[i];
         }
+        const double mass_scale = 100.0 / total_weight;
+        for (double& mass : s.mass) mass *= mass_scale;
         recenter(s);
         const auto d = diagnostics(s, p);
         const double scale = d.kinetic_energy > 0.0 ? std::sqrt(-d.potential_energy / (2.0 * d.kinetic_energy)) : 0.0;

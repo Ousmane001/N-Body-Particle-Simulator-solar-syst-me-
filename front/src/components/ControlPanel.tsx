@@ -1,3 +1,4 @@
+// Show the current scenario settings and simulation controls.
 import { useSimulationStore } from '../store/simulationStore'
 import { Icon } from './Icons'
 export function ControlPanel() {

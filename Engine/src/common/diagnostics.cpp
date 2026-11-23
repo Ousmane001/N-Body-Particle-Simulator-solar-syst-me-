@@ -1,4 +1,5 @@
-#include "nbody/cpu.hpp"
+// Calculate the energy, momentum, and center of mass of a state.
+#include "nbody/state.hpp"
 #include <cmath>
 #include <stdexcept>
 
