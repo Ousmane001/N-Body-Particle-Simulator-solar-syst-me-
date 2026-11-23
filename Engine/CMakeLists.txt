@@ -42,6 +42,14 @@ if(NBODY_CUDA)
         message(FATAL_ERROR "Use the CPU sanitizer preset for AddressSanitizer and UBSan")
     endif()
     enable_language(CUDA)
+    add_library(nbody_gpu_backend src/gpu/forces.cu)
+    target_link_libraries(nbody_gpu_backend PUBLIC nbody_common)
+    set_target_properties(nbody_gpu_backend PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED YES
+        CUDA_EXTENSIONS OFF
+        CUDA_SEPARABLE_COMPILATION ON)
+
     add_executable(nbody_gpu_naive src/gpu/naive.cu)
     target_link_libraries(nbody_gpu_naive PRIVATE nbody_common)
     set_target_properties(nbody_gpu_naive PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED YES CUDA_EXTENSIONS OFF)
