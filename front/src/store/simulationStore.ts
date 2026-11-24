@@ -1,4 +1,4 @@
-// Keep the simulation state and relay actions used by the interface.
+// Simulation state and actions used by the interface.
 import { create } from 'zustand'
 import type { LiveFrame, LiveMetadata, LiveMessage, ScenarioId } from '../../bridge/types'
 import { appearance, command, connectLive } from '../../bridge/client'

@@ -1,4 +1,4 @@
-// Draw the background of the 3D simulation scene.
+// Star background for the 3D scene.
 import { Stars } from '@react-three/drei'
 import { useSimulationStore } from '../../store/simulationStore'
 export function SceneBackground() {

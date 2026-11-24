@@ -1,16 +1,19 @@
-// Declare the CPU simulation and its direct force calculation.
+// CPU force calculation and simulation step interface.
 #pragma once
-#include "nbody/state.hpp"
+#include "state.hpp"
 #include <cstdint>
+#include <functional>
 
 namespace nbody {
 // Direct target/source loop, ascending indices, self interaction omitted.
 void direct_acceleration(const State& state, const Parameters& parameters, Acceleration& result);
 
-// Positions AND velocities are synchronized at each integer time step.
+// Positions and velocities describe the same time after each full step.
 class CpuSimulation {
 public:
-    CpuSimulation(State initial, Parameters parameters);
+    using ForceCalculation = std::function<void(const State&, const Parameters&, Acceleration&)>;
+
+    CpuSimulation(State initial, Parameters parameters, ForceCalculation calculate = direct_acceleration);
     void step();
     void advance(std::uint64_t steps);
     const State& state() const noexcept { return state_; }
@@ -20,6 +23,7 @@ public:
 private:
     State state_;
     Parameters parameters_;
+    ForceCalculation calculate_;
     Acceleration acceleration_;
     std::uint64_t steps_ = 0;
 };

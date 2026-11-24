@@ -1,5 +1,5 @@
-// Create the body arrays and check that their values and physics settings are valid.
-#include "nbody/state.hpp"
+// Body storage and validation of the simulation state.
+#include "state.hpp"
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -9,6 +9,7 @@ State::State(std::size_t n) : x(n), y(n), z(n), vx(n), vy(n), vz(n), mass(n, 1.0
 void State::validate() const {
     const auto n = size();
     if (n == 0) throw std::invalid_argument("At least one body is required.");
+    // All arrays need a value at every body index used by the force loops.
     for (const auto* values : {&x, &y, &z, &vx, &vy, &vz, &mass}) {
         if (values->size() != n) throw std::invalid_argument("State arrays have different lengths.");
         for (double value : *values) if (!std::isfinite(value)) throw std::invalid_argument("State contains a non-finite value.");

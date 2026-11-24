@@ -1,5 +1,5 @@
-// Create the starting bodies for each scenario and center the system.
-#include "nbody/initial_conditions.hpp"
+// Initial positions, velocities, and masses for each scenario.
+#include "initial_conditions.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -8,7 +8,7 @@
 namespace nbody {
 namespace {
 constexpr double tau = 6.283185307179586476925286766559;
-// SplitMix64 + explicitly defined Box-Muller: no platform-specific distribution.
+// SplitMix64 produces uniform values, and Box-Muller gives us normal values.
 class Random {
     std::uint64_t state_;
 public:
@@ -56,6 +56,7 @@ void recenter(State& s) {
         position.x += s.mass[i] * s.x[i]; position.y += s.mass[i] * s.y[i]; position.z += s.mass[i] * s.z[i];
         velocity.x += s.mass[i] * s.vx[i]; velocity.y += s.mass[i] * s.vy[i]; velocity.z += s.mass[i] * s.vz[i];
     }
+    // We subtract the mean position and velocity, weighted by mass.
     for (std::size_t i = 0; i < s.size(); ++i) {
         s.x[i] -= position.x / mass; s.y[i] -= position.y / mass; s.z[i] -= position.z / mass;
         s.vx[i] -= velocity.x / mass; s.vy[i] -= velocity.y / mass; s.vz[i] -= velocity.z / mass;
@@ -81,7 +82,7 @@ InitialConditions make_initial_conditions(const InitialOptions& o, const Paramet
         initial.state = State(9);
         auto& s = initial.state;
         s.mass[0] = 1000.0;
-        // Normalized teaching model, deliberately NOT real ephemerides/masses.
+        // The solar system uses normalized masses and orbital radii.
         const double radii[] = {1.8, 2.7, 3.7, 4.8, 6.4, 8.5, 10.8, 13.0};
         const double masses[] = {0.001, 0.002, 0.003, 0.002, 0.25, 0.15, 0.08, 0.08};
         for (std::size_t i = 1; i < 9; ++i) {
@@ -98,6 +99,7 @@ InitialConditions make_initial_conditions(const InitialOptions& o, const Paramet
         auto& s = initial.state;
         double total_weight = 0.0;
         for (std::size_t i = 0; i < s.size(); ++i) {
+            // The cube root spreads the positions uniformly through the sphere's volume.
             const double r = 4.0 * std::cbrt(random.uniform());
             const double cosine = 2.0 * random.uniform() - 1.0;
             const double sine = std::sqrt(std::max(0.0, 1.0 - cosine * cosine));
@@ -107,10 +109,12 @@ InitialConditions make_initial_conditions(const InitialOptions& o, const Paramet
             s.mass[i] = 0.5 + random.uniform();
             total_weight += s.mass[i];
         }
+        // We keep the cluster's total mass at 100 when the body count changes.
         const double mass_scale = 100.0 / total_weight;
         for (double& mass : s.mass) mass *= mass_scale;
         recenter(s);
         const auto d = diagnostics(s, p);
+        // Scaling all velocities by this factor gives an initial 2K / |U| ratio of 1.
         const double scale = d.kinetic_energy > 0.0 ? std::sqrt(-d.potential_energy / (2.0 * d.kinetic_energy)) : 0.0;
         for (std::size_t i = 0; i < s.size(); ++i) { s.vx[i] *= scale; s.vy[i] *= scale; s.vz[i] *= scale; }
         initial.frontend_scenario = "star_cluster";
@@ -123,6 +127,7 @@ InitialConditions make_initial_conditions(const InitialOptions& o, const Paramet
         auto& s = initial.state;
         std::size_t offset = 0;
         for (std::size_t g = 0; g < o.galaxies; ++g) {
+            // Any leftover bodies go to the first galaxies so the total matches the requested count.
             const auto n = o.count / o.galaxies + (g < o.count % o.galaxies ? 1 : 0);
             const auto galaxy = disk(n, random, p);
             const double angle = tau * static_cast<double>(g) / static_cast<double>(o.galaxies);

@@ -1,4 +1,4 @@
-// Define how we store body data, physics settings, and diagnostics.
+// Body data, physics settings, and diagnostics.
 #pragma once
 #include <cstddef>
 #include <vector>
@@ -7,16 +7,17 @@ namespace nbody {
 struct Vec3 {
     double x = 0.0, y = 0.0, z = 0.0;
 };
-// Structure of arrays: x[i] is the x position of body i, and so on.
+// Each array holds one quantity for all bodies. Index i refers to the same body in every array.
 struct State {
     std::vector<double> x, y, z, vx, vy, vz, mass;
     explicit State(std::size_t count = 0);
     std::size_t size() const noexcept { return mass.size(); }
     void validate() const;
 };
-// Shared numerical conventions for the force calculation and integrator.
+// CPU and GPU use the same constants in normalized units.
 struct Parameters {
     double gravitational_constant = 1.0;
+    // The square of this small length is added to the squared distance.
     double softening = 0.02;
     double dt = 0.001;
     void validate() const;

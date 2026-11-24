@@ -1,6 +1,6 @@
-// Share benchmark options, timings, and energy checks between the two executables.
+// Benchmark options, timings, and energy checks.
 #pragma once
-#include "nbody/initial_conditions.hpp"
+#include "initial_conditions.hpp"
 #include <chrono>
 #include <optional>
 
@@ -21,23 +21,24 @@ struct Options {
 };
 
 struct Timings {
+    // CPU runs use the same value for both fields. On CUDA, the second time includes transfers.
     double compute = 0.0;
-    double total = 0.0;
-    double validation = 0.0;
-    std::optional<double> gpu_total;
-    unsigned int grid_size = 0;
+    double with_transfer = 0.0;
 };
 
 struct EnergyReport {
     explicit EnergyReport(double initial_energy);
     void observe(double value);
 
-    double initial, final;
-    double final_absolute_drift = 0.0;
+    double initial;
+    // The final signed change goes in the JSON. The largest change is used for validation.
+    double delta = 0.0;
     double max_absolute_drift = 0.0;
-    std::uint64_t checks = 1;
 };
 
 Options parse_options(int argc, char** argv, bool gpu = false);
-int print_benchmark(const char* backend, const Options& options, const Timings& timings, const EnergyReport& energy);
+void record_gpu_force_timings(double compute, double with_transfer);
+std::optional<Timings> take_gpu_force_timings();
+int print_benchmark(const char* algo, const Options& options, std::optional<Timings> timings,
+                    const EnergyReport& energy);
 } // namespace nbody

@@ -1,4 +1,4 @@
-// Configure Vite and the local proxy to the live relay.
+// Vite settings and the proxy to the local relay.
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 const proxy = { '/api': { target: 'http://127.0.0.1:8787', changeOrigin: false, timeout: 0, proxyTimeout: 0 } }

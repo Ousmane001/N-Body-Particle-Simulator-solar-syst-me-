@@ -1,4 +1,4 @@
-// Check the main user interactions in the browser.
+// Tests for the main browser interactions.
 import assert from 'node:assert/strict'
 import { JSDOM } from 'jsdom'
 import { EventSource } from 'undici'

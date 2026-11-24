@@ -1,4 +1,4 @@
-// Draw the bodies as particles for the cluster and galaxy views.
+// Particle view for clusters and galaxies.
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'

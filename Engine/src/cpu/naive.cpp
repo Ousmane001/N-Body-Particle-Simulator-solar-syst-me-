@@ -1,5 +1,5 @@
-// Calculate the acceleration of each body from all the other bodies on the CPU.
-#include "nbody/cpu.hpp"
+// Direct calculation of gravitational acceleration on the CPU.
+#include "cpu.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -14,14 +14,12 @@ void direct_acceleration(const State& state, const Parameters& parameters,
     acceleration.z.resize(body_count);
     const double epsilon_squared = parameters.softening * parameters.softening;
 
-    // i is the target body. Each iteration writes only acceleration[i].
-    // This outer loop is the natural starting point for parallelization.
+    // Each iteration writes the acceleration of a single target body.
     for (std::size_t i = 0; i < body_count; ++i) {
         double ax = 0.0, ay = 0.0, az = 0.0;
         for (std::size_t j = 0; j < body_count; ++j) {
             if (i == j) continue; // A body does not attract itself.
 
-            // Displacement from the target i towards the source j.
             const double dx = state.x[j] - state.x[i];
             const double dy = state.y[j] - state.y[i];
             const double dz = state.z[j] - state.z[i];

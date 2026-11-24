@@ -1,4 +1,4 @@
-// Set up the 3D scene and choose how to draw the current scenario.
+// 3D scene for the selected scenario.
 import { Canvas } from '@react-three/fiber'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import { SceneBackground } from './scene/SceneBackground'

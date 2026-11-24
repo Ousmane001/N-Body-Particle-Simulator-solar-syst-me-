@@ -1,4 +1,4 @@
-// Let the user select a body to follow in the simulation.
+// Body selection for the camera.
 import { useSimulationStore } from '../store/simulationStore'
 import { SOLAR_BODIES } from './scene/solarAppearance'
 import { Icon } from './Icons'
@@ -7,7 +7,7 @@ export function BodyNavigator() {
   const ready = useSimulationStore((s) => s.metadata !== null)
   const selected = useSimulationStore((s) => s.selectedIndex)
   const focus = useSimulationStore((s) => s.focusGroup)
-  // Keep this reference stable while the CPU is starting.
+  // This reference stays stable while the CPU starts.
   const groups = useSimulationStore((s) => s.metadata?.groups)
   return <nav className="body-navigation" aria-label={solar ? 'Explore planets' : 'Explore star groups'}>
     <button className={selected === null && focus === null ? 'body-choice active' : 'body-choice'} aria-pressed={selected === null && focus === null} onClick={() => useSimulationStore.getState().overview()}>

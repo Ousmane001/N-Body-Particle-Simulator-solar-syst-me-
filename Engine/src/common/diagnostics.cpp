@@ -1,5 +1,5 @@
-// Calculate the energy, momentum, and center of mass of a state.
-#include "nbody/state.hpp"
+// Energy, momentum, and center of mass of the system.
+#include "state.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -8,15 +8,18 @@ Diagnostics diagnostics(const State& s, const Parameters& p) {
     s.validate(); p.validate();
     Diagnostics d;
     double total_mass = 0.0;
+    // Kinetic energy and momentum are sums over individual bodies.
     for (std::size_t i = 0; i < s.size(); ++i) {
         const double m = s.mass[i];
         total_mass += m;
         d.kinetic_energy += 0.5 * m * (s.vx[i] * s.vx[i] + s.vy[i] * s.vy[i] + s.vz[i] * s.vz[i]);
         d.momentum.x += m * s.vx[i]; d.momentum.y += m * s.vy[i]; d.momentum.z += m * s.vz[i];
         d.center_of_mass.x += m * s.x[i]; d.center_of_mass.y += m * s.y[i]; d.center_of_mass.z += m * s.z[i];
+        // Angular momentum is position crossed with momentum for each body.
         d.angular_momentum.x += m * (s.y[i] * s.vz[i] - s.z[i] * s.vy[i]);
         d.angular_momentum.y += m * (s.z[i] * s.vx[i] - s.x[i] * s.vz[i]);
         d.angular_momentum.z += m * (s.x[i] * s.vy[i] - s.y[i] * s.vx[i]);
+        // We count each pair once and use the same softening as in the force calculation.
         for (std::size_t j = i + 1; j < s.size(); ++j) {
             const double dx = s.x[j] - s.x[i], dy = s.y[j] - s.y[i], dz = s.z[j] - s.z[i];
             const double r2 = dx * dx + dy * dy + dz * dz + p.softening * p.softening;
@@ -24,6 +27,7 @@ Diagnostics diagnostics(const State& s, const Parameters& p) {
             d.potential_energy -= p.gravitational_constant * s.mass[i] * s.mass[j] / std::sqrt(r2);
         }
     }
+    // Dividing the weighted position sum by the total mass gives the center.
     d.center_of_mass.x /= total_mass; d.center_of_mass.y /= total_mass; d.center_of_mass.z /= total_mass;
     for (double value : {d.kinetic_energy, d.potential_energy, d.total_energy(), d.momentum.x, d.momentum.y, d.momentum.z,
                         d.angular_momentum.x, d.angular_momentum.y, d.angular_momentum.z,

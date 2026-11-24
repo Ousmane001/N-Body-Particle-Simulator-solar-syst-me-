@@ -1,19 +1,35 @@
+# Simulation engine
 
-## Suggested reading order for the Mr Picard 
+This engine simulates bodies moving under gravity. The frontend runs the CPU
+version live, and the benchmark script runs a fixed number of steps on the
+same cluster setup for each CPU or CUDA variant.
 
-1. `include/nbody/state.hpp` describes the data.
-2. `src/cpu/forces.cpp` calculates acceleration.
-3. `src/cpu/simulation.cpp` advances time.
-4. `src/common/initial_conditions.cpp` creates starting positions and velocities.
-5. `src/cpu/main.cpp` selects a live or finite run.
-6. `src/common/live.cpp` handles communication with the display.
+## Build
 
-The first three files contain the core needed to understand the numerical
-method. Communication and initial scene generation are separate from it.
+The build requires CMake 3.21 or later and a C++17 compiler. The commands run
+from the root of `nbody-gpu`.
+
+```sh
+cmake -S Engine -B build
+cmake --build build --parallel
+```
+
+The CPU executable is `build/nbody_cpu`. CMake adds the GPU executables when
+it finds a CUDA compiler. Running a GPU variant requires the CUDA toolkit
+and an NVIDIA GPU.
+
+## Main files
+
+- The state holds positions, velocities, masses and physics settings. [state.hpp](include/state.hpp)
+- The CPU and CUDA force functions calculate gravitational acceleration. [CPU](src/cpu/naive.cpp) · [CUDA](src/gpu/naive.cu)
+- The integrator advances the system using those accelerations. [simulation.cpp](src/common/simulation.cpp)
+- The initial conditions define how bodies start in each scenario. [initial_conditions.cpp](src/common/initial_conditions.cpp)
+- The diagnostics calculate energy, momentum and center of mass. [diagnostics.cpp](src/common/diagnostics.cpp)
+- The main program selects live mode or a benchmark. [main.cpp](src/main.cpp)
 
 ## 1. The state
 
-`State` is a **structure of arrays**:
+`State` stores one array per quantity.
 
 ```text
 x[i], y[i], z[i]       position of body i
@@ -21,16 +37,13 @@ vx[i], vy[i], vz[i]    velocity of body i
 mass[i]               mass of body i
 ```
 
-All arrays have the same length. All values are doubles (it is our choice !).
-A separate `Acceleration` holds ax, ay and az for each
-body. Units are normalized; G defaults to 1.
+All arrays have the same length and use double precision. A separate
+`Acceleration` stores ax, ay and az for each body. The model uses normalized
+units with G set to 1 by default.
 
-This layout makes the data flow explicit and can later be copied into
-corresponding device arrays.
+## 2. Direct gravity
 
-## 2. Direct gravity: forces.cpp
-
-For one target body i, visit every source body j:
+For each body `i`, we sum the acceleration caused by the other bodies `j`.
 
 ```text
 d = position[j] - position[i]
@@ -38,16 +51,15 @@ r2 = dot(d, d) + epsilon * epsilon
 acceleration[i] += G * mass[j] * d / (r2 * sqrt(r2))
 ```
 
-Skip j = i: a body does not attract itself. The target mass is absent because
-acceleration is force divided by that mass. Softening epsilon keeps the force
-finite when bodies are very close.
+The loop skips `j = i`. The target mass cancels when we divide the force by
+that mass. A positive `epsilon` keeps the denominator away from zero when
+bodies are close together. The calculation visits N(N−1) pairs in total, so
+its cost is O(N²). Each target body has its own output, which lets CUDA assign
+one thread per body.
 
-The outer loop writes one acceleration entry.
-The direct method visits N(N−1) directed pairs: its cost is O(N²).
+## 3. Leapfrog integration
 
-## 3. Leapfrog KDK: simulation.cpp
-
-`CpuSimulation::step()` contains three explicit stages:
+`CpuSimulation::step()` advances the system in three stages.
 
 ```text
 KICK    velocity += 0.5 * dt * old_acceleration
@@ -56,33 +68,27 @@ DRIFT   position += dt * velocity
 KICK    velocity += 0.5 * dt * new_acceleration
 ```
 
-The initial acceleration is computed in the constructor. After a complete
-step, positions and velocities describe the same integer time. The new
-acceleration is kept for the next step.
-
-All bodies must finish the drift before new forces are evaluated. Preserving
-this ordering will matter when we parallelize the implementation.
-The physical dt is fixed; display speed changes how often steps are requested.
-
-Defaults: dt = 0.001, epsilon = 0.02, G = 1. A smaller dt may be necessary for
-more demanding initial states. Live mode never changes dt automatically.
+The first kick uses the acceleration at the initial positions. Each step
+recalculates the accelerations after all positions have changed and keeps
+them for the next step. At the end of a step, positions and velocities
+describe the same time. The default values are `dt = 0.001`, `epsilon = 0.02`
+and `G = 1`.
 
 ## 4. Initial conditions
 
-All states are generated in C++, then centered in position and velocity.
-Random states use a defined generator and a fixed default seed of 42.
+We shift the initial positions and velocities so the center of mass starts
+at the origin with zero net momentum. Random scenarios use seed 42 by default.
 
-- `binary`: two equal masses on a circular orbit consistent with softening.
-- `solar`: nine bodies in the display order, with teaching-model masses and radii.
-- `cluster`: a uniform sphere, total mass 100, with velocities scaled to 2K/|U| = 1.
-- `galaxy`: a thick spiral disk around a dominant central mass.
-- `merger`: two to four inclined disks moving towards each other initially.
-
+- `binary` starts two equal masses on a circular orbit with softening.
+- `solar` uses nine bodies with normalized masses and orbital radii.
+- `cluster` samples positions uniformly in a sphere, sets the total mass to 100 and scales the velocities so `2K / |U| = 1`.
+- `galaxy` places a thick spiral disk around a dominant central mass.
+- `merger` starts two to four tilted disks moving toward each other.
 
 ## 5. Live communication
 
-Run the executable without `--steps`. It writes a JSON `ready` message to
-stdout, then waits on stdin. Each line is one command:
+Without `--steps`, the executable writes a JSON `ready` message to stdout and
+then reads one command per line from stdin.
 
 ```text
 step 10
@@ -98,23 +104,67 @@ flushed so the display receives them immediately. Nothing is saved to disk.
 The relay requests only one batch at a time. Pause means that no new batch
 is requested. Restart replaces the process with the same initial conditions.
 
-
-To try the protocol from a terminal, from the project root:
-
-```sh
-printf 'step 10\nstep 10\nquit\n' | moteur/build/nbody_cpu --scenario solar
-```
-
-The live display is local CPU only since we don't know how to connect it to nash like in production, so we use nash nodes only for computation . The browser communicates with the relay;
-it does not run or import any numerical C++ code.
-
-## 6. Finite runs and validation
+Example from the project root.
 
 ```sh
-cmake -S moteur -B moteur/build -DCMAKE_BUILD_TYPE=Release
-cmake --build moteur/build -j 4
-ctest --test-dir moteur/build --output-on-failure
-moteur/build/nbody_cpu --scenario cluster --count 1024 --steps 20
+printf 'step 10\nstep 10\nquit\n' | build/nbody_cpu --scenario solar
 ```
 
-`src/cuda/` is reserved for your own implementation. No GPU kernel is included.
+The live engine runs on the local CPU. The browser receives positions from
+the relay. [live.cpp](src/common/live.cpp)
+
+## 6. Benchmark variants
+
+The benchmark script builds and runs the selected variant on `cluster`.
+These examples use the same body count and number of steps.
+
+```sh
+scripts/benchmark.sh cpu-naive --count 1024 --steps 20
+scripts/benchmark.sh gpu-naive --count 1024 --steps 20
+scripts/benchmark.sh gpu-optim --count 1024 --steps 20
+```
+
+- `cpu-naive` calculates accelerations and advances the simulation on the CPU.
+- `gpu-naive` uses Houda Rachidi's CUDA kernel for accelerations. The CPU updates positions and velocities, and each force call transfers data in both directions.
+- `gpu-optim` uses Houda Rachidi's 2D tiled force kernel. Each block works on a pair of groups in shared memory. The simulation state stays on the GPU between steps. [CUDA implementation](src/gpu/optim.cu)
+- `cpu-optim` and `gpu-advanced_optim` are placeholders that report an error when run.
+
+The CUDA variants use 256 threads per block by default. The tiled
+`gpu-optim` kernel uses a fixed 16 × 16 block, so its `--block-size` is 256.
+
+### Results and timing
+
+Each run replaces `results/<variant>.json`. The summary contains `algo`,
+`nbodies`, `steps`, `compute_seconds`, `compute_with_transfer_seconds`,
+`simulated_time_per_step` and `energy_delta`.
+
+- For `cpu-naive`, both timing fields measure the initial force calculation and the integration steps.
+- For `gpu-naive`, `compute_seconds` is the sum of the CUDA force kernel timings. The second field also includes the transfers for each force call.
+- For `gpu-optim`, `compute_seconds` covers the initial force calculation and the integration on the GPU, including clearing the acceleration buffer before each force calculation. The second field also includes the initial upload.
+
+Energy checks run outside the measured intervals. For `gpu-optim`, this also
+keeps the copies back to the CPU for energy validation out of both timings.
+
+### Energy checks
+
+Total energy is the sum of kinetic and potential energy. The potential
+energy uses the same softening as the forces and counts each body pair once.
+`energy_delta` is the final energy minus the initial energy.
+
+The default checks run at the start and end. `--energy-every K` adds a check
+every K steps when K is positive. `--max-energy-drift X` applies
+a relative limit to the largest measured change from the initial energy.
+For example, `--max-energy-drift 0.001` sets a limit of 0.1%. A run that
+exceeds the limit saves its JSON and exits with status 2.
+
+## 7. Plot benchmark results
+
+```sh
+scripts/plot_benchmarks.py results/cpu-naive.json results/gpu-naive.json results/gpu-optim.json
+```
+
+The input files must share the same `nbodies` and `steps`. The script creates
+`results/compute_seconds.png` and `results/compute_with_transfer_seconds.png`,
+with algorithms shown in the input order. Plotting requires Python 3 and
+gnuplot, available via `brew install gnuplot` on macOS or
+`sudo apt install gnuplot` on Debian/Ubuntu.

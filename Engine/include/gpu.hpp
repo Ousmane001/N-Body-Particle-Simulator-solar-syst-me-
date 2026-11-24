@@ -1,6 +1,7 @@
+// GPU force calculation for a single simulation state.
 #pragma once
 
-#include "nbody/state.hpp"
+#include "state.hpp"
 
 namespace nbody {
 

@@ -1,4 +1,4 @@
-// Keep the small icons used by the simulation controls in one place.
+// Icons for the simulation controls.
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
     play: <path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none" />,

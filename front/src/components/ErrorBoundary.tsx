@@ -1,4 +1,4 @@
-// Show a fallback message when part of the interface crashes.
+// Fallback screen for interface errors.
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 
@@ -8,7 +8,6 @@ interface Props {
   message?: string
 }
 
-/** Show a recoverable message even when UI outside the canvas fails. */
 export class ErrorBoundary extends Component<Props, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }

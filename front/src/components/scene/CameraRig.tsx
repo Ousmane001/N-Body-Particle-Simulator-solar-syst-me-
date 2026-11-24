@@ -1,4 +1,4 @@
-// Control the 3D camera and follow a body when one is selected.
+// Camera navigation and body tracking.
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'

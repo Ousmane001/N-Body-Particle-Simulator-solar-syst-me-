@@ -1,6 +1,6 @@
-// Describe the options used to create the starting state.
+// Settings for the initial state of each scenario.
 #pragma once
-#include "nbody/state.hpp"
+#include "state.hpp"
 #include <cstdint>
 #include <string>
 

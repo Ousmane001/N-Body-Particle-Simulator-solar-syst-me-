@@ -1,13 +1,71 @@
-# N-Body — Live CPU
+# N-Body Simulation
 
-A C++17 sequential N-body engine connected to a minimal React/Three.js view.
-All four scenarios are computed by the CPU while the application is running.
-The interface keeps only the latest positions received from the engine.
+This project simulates bodies moving under gravity. The React/Three.js interface
+displays the CPU simulation live. A separate benchmark runs the same star
+cluster on CPU and CUDA and records the computation times.
 
-## Start
+## 1. Install the tools
 
-Requirements: a C++17 compiler, CMake 3.18+, Node.js 22.12+ or 24+, and npm.
-From the project directory:
+The engine needs a C++17 compiler and CMake 3.21 or later. The live interface
+uses Node.js 24 and npm. The plot script uses Python 3 and gnuplot.
+
+### macOS
+
+On a fresh Mac, the first command opens the installer for the compiler and
+Git. After it finishes, the second command installs Homebrew. [Homebrew installation](https://docs.brew.sh/Installation)
+
+```sh
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+If `brew` is missing from the terminal after installation, the installer prints
+a `brew shellenv` command to add it to the path. [Homebrew setup](https://docs.brew.sh/Installation)
+
+```sh
+brew install cmake node@24 python gnuplot
+export PATH="$(brew --prefix node@24)/bin:$PATH"
+```
+
+### Ubuntu 24.04
+
+```sh
+sudo apt update
+sudo apt install git build-essential cmake curl ca-certificates python3 gnuplot
+```
+
+For the frontend, nvm installs Node.js 24 and npm in the current user's home
+directory. [nvm installation](https://github.com/nvm-sh/nvm#install--update-script)
+
+```sh
+export NVM_DIR="$HOME/.nvm"
+mkdir -p "$NVM_DIR"
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.41.0/install.sh | bash
+. "$NVM_DIR/nvm.sh"
+nvm install 24
+```
+
+## 2. Clone and run the CPU benchmark
+
+```sh
+git clone https://github.com/Ousmane001/N-Body-Particle-Simulator-solar-syst-me-.git nbody-gpu
+cd nbody-gpu
+
+scripts/benchmark.sh cpu-naive --count 1024 --steps 20
+```
+
+The script configures and builds the engine with CMake, runs the `cluster`
+scenario and writes `results/cpu-naive.json`. For a manual build, the
+executables go into `build/`.
+
+```sh
+cmake -S Engine -B build
+cmake --build build --parallel
+```
+
+## 3. Start the live interface
+
+From the repository root.
 
 ```sh
 cd front
@@ -15,73 +73,17 @@ npm ci
 npm run dev
 ```
 
-This command builds the C++ executable, starts the local communication relay,
-and opens the development server at http://127.0.0.1:5173/.
-The engine is an independent program: its build does not require Node.js.
+The startup command builds the engine and starts the local relay and
+frontend. The default address is [http://127.0.0.1:5173/](http://127.0.0.1:5173/).
+It offers a solar system, star cluster, spiral galaxy and galaxy collision.
+The displayed time is simulated time, calculated as the number of steps
+times the length of one step.
 
-## Controls
+### Optional frontend checks
 
-- Select Solar system, Spiral galaxy, Galaxy collision, or Star cluster.
-- Choose the body count; collisions support two to four galaxies.
-- Play requests new integration steps from the CPU.
-- Pause stops requesting work. A small batch already running may finish.
-- Restart creates the same initial state again with the same random seed.
-- Speed changes the requested number of steps, never the physical time step.
-- Drag to rotate, scroll to zoom, or select a planet/group to follow it.
-
-The displayed time is **simulation time**, calculated as steps × dt.
-Live display does not imply that simulation time matches wall-clock time.
-The direct CPU algorithm costs O(N²), so larger populations advance more
-slowly. The default is 1,000 bodies for stellar scenes. The relay adjusts
-batch sizes to avoid accumulating work; it never skips integration steps.
-The solar scene contains the Sun and all eight planets.
-
-## Components
-
-```text
-moteur/              C++ state, forces, Leapfrog, initial conditions and tests
-front/bridge/       Local process relay, HTTP events, client and display types
-front/src/          Controls, camera, solar materials and point-cloud rendering
-```
-
-The data path is:
-
-```text
-C++ CPU process → stdout → local Node relay → HTTP event stream → browser
-browser controls → HTTP commands → relay → C++ stdin
-```
-
-The relay contains no gravity or integration code. It uses one C++ process
-and forwards current positions. Closing the last browser connection pauses
-the calculation. The local relay listens only on 127.0.0.1:8787; Vite proxies
-its `/api` routes. One local simulation session is shared by the browser tabs.
-
-## Read the engine
-
-Start with [moteur/README.md](moteur/README.md). The two main numerical files are:
-
-- `moteur/src/cpu/forces.cpp`: the direct target/source loop.
-- `moteur/src/cpu/simulation.cpp`: the three explicit Kick–Drift–Kick stages.
-
-The solver uses double precision, fixed dt, Newtonian direct gravity and
-softening. The teaching initial conditions use normalized units and are not
-astronomical ephemerides. GPU implementation is left for the next project step.
-
-## Build and test the engine alone
-
-```sh
-cmake -S moteur -B moteur/build -DCMAKE_BUILD_TYPE=Release
-cmake --build moteur/build -j 4
-ctest --test-dir moteur/build --output-on-failure
-moteur/build/nbody_cpu --scenario cluster --count 256 --steps 100
-```
-
-The finite command prints compute time and energy diagnostics. It produces
-no data files. The integration timer excludes setup, diagnostics and output.
-
-## Test the live application
-
-After building the engine, from `front/`:
+These commands run from `front/` after `npm ci` and once `../build/nbody_cpu`
+exists. The `npm test` command runs the live relay and
+browser interaction checks. [Relay checks](front/scripts/test-live.mjs) · [Browser checks](front/scripts/test-ui.mjs)
 
 ```sh
 npm run lint
@@ -89,16 +91,62 @@ npm run build
 npm test
 ```
 
-The tests run the real executable and check its text protocol, HTTP event
-stream, pause/resume, restart, scenario changes, group navigation, startup
-stability, connection handling and the reduced UI. No GPU is required.
+## 4. Run the CUDA benchmarks
+
+CUDA benchmarks require a compatible NVIDIA GPU, driver and CUDA toolkit.
+On Ubuntu, NVIDIA provides the driver instructions and the APT repository
+setup for the installed OS version. [NVIDIA Linux setup guide](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/)
+
+Once the NVIDIA APT repository is configured, these commands install the
+toolkit and check that the driver and compiler are available.
+
+```sh
+sudo apt update
+sudo apt install cuda-toolkit
+export PATH="/usr/local/cuda/bin:$PATH"
+nvidia-smi
+nvcc --version
+```
+
+From the repository root, the CUDA runs use the same number of bodies and
+steps as the CPU run above.
+
+```sh
+scripts/benchmark.sh gpu-naive --count 1024 --steps 20
+scripts/benchmark.sh gpu-optim --count 1024 --steps 20
+```
+
+## 5. Plot the results
+
+From the repository root, this command plots the result from the CPU benchmark.
+
+```sh
+scripts/plot_benchmarks.py results/cpu-naive.json
+```
+
+After the CUDA runs, the same script can compare all three results. The JSON
+files must have the same body count and step count.
+
+```sh
+scripts/plot_benchmarks.py results/cpu-naive.json results/gpu-naive.json results/gpu-optim.json
+```
+
+The graphs are saved as `results/compute_seconds.png` and
+`results/compute_with_transfer_seconds.png`.
+
+## Project layout
+
+- `Engine/` contains the force calculations, integration and benchmark output. [Engine guide](Engine/README.md)
+- `front/` contains the React interface and the relay that starts the CPU engine. [Frontend guide](front/README.md)
+- `scripts/` contains the benchmark runner and the plot script.
+
+The engine guide covers the force equation, the integration steps, the CUDA
+variants and the timing and energy measurements. [Numerical implementation](Engine/README.md#2-direct-gravity)
 
 ## Attribution
 
-The interface was adapted from Neural Gravity Lab by Adi, under MIT:
-https://github.com/researchingadi/N-Body-Particle-Simulator
+The interface was adapted from Adi's Neural Gravity Lab under the MIT
+license. [Original project](https://github.com/researchingadi/N-Body-Particle-Simulator)
 
-The original numerical engine is not used. The C++ engine was written for
-this project. Planet textures are by Solar System Scope / INOVE, CC BY 4.0:
-https://www.solarsystemscope.com/textures/
-See `LICENSE`, `NOTICE.md`, and `front/public/textures/ATTRIBUTION.md`.
+Planet textures are by Solar System Scope / INOVE under CC BY 4.0.
+[Texture credits](front/public/textures/ATTRIBUTION.md)

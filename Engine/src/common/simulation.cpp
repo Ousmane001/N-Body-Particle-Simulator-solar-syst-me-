@@ -1,15 +1,16 @@
-// Advance the CPU simulation with the kick, drift, kick steps.
-#include "nbody/cpu.hpp"
+// Leapfrog integration using kick, drift, and kick steps.
+#include "cpu.hpp"
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <utility>
 
 namespace nbody {
-CpuSimulation::CpuSimulation(State initial, Parameters parameters)
-    : state_(std::move(initial)), parameters_(parameters), acceleration_(state_.size()) {
-    // The first kick needs acceleration at the initial positions.
-    direct_acceleration(state_, parameters_, acceleration_);
+CpuSimulation::CpuSimulation(State initial, Parameters parameters, ForceCalculation calculate)
+    : state_(std::move(initial)), parameters_(parameters), calculate_(std::move(calculate)),
+      acceleration_(state_.size()) {
+    // We need the initial acceleration for the first kick.
+    calculate_(state_, parameters_, acceleration_);
 }
 
 void CpuSimulation::step() {
@@ -31,8 +32,8 @@ void CpuSimulation::step() {
         state_.y[i] += dt * state_.vy[i];
         state_.z[i] += dt * state_.vz[i];
     }
-    // All positions must be updated before evaluating the new acceleration.
-    direct_acceleration(state_, parameters_, acceleration_);
+    // We update every position before calculating the new acceleration.
+    calculate_(state_, parameters_, acceleration_);
 
     // 3. KICK: finish the velocity update at the new positions.
     for (std::size_t i = 0; i < state_.size(); ++i) {

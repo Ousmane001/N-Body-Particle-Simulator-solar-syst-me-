@@ -1,4 +1,4 @@
-// Draw the Sun and planets using the positions from the engine.
+// Sun and planets drawn at positions from the CPU engine.
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html, Line, useTexture } from '@react-three/drei'

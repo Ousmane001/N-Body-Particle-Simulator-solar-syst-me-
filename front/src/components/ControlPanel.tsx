@@ -1,4 +1,4 @@
-// Show the current scenario settings and simulation controls.
+// Scenario settings and playback controls.
 import { useSimulationStore } from '../store/simulationStore'
 import { Icon } from './Icons'
 export function ControlPanel() {

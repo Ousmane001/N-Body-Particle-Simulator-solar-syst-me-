@@ -1,10 +1,10 @@
-// Start the CPU engine and relay its live state to the browser.
+// Local relay between the CPU engine and the browser.
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
-const executable = fileURLToPath(new URL('../../build/release/nbody_cpu', import.meta.url))
+const executable = fileURLToPath(new URL('../../build/nbody_cpu', import.meta.url))
 const scenarios = { solar_system: 'solar', star_cluster: 'cluster', disk_galaxy: 'galaxy', galaxy_merger: 'merger' }
 const speeds = [0.25, 0.5, 1, 2, 4]
 
@@ -40,7 +40,7 @@ export function createLiveServer({ binary = executable, port = 8787 } = {}) {
   function requestWork() {
     clearTimer()
     if (!child || !lastReady || !playing || loading || busy) return
-    // Prefer short batches for responsive Pause. The fixed physical dt never changes.
+    // Short batches let the interface pause sooner without changing the time step.
     const desired = Math.max(1, Math.round(10 * speed))
     const budget = secondsPerStep > 0 ? Math.max(1, Math.floor(0.025 / secondsPerStep)) : 1
     requestedSteps = Math.min(desired, budget)
@@ -58,6 +58,7 @@ export function createLiveServer({ binary = executable, port = 8787 } = {}) {
     process.stderr.on('data', (chunk) => { if (child === process) stderr = (stderr + chunk.toString()).slice(-2000) })
     const lines = createInterface({ input: process.stdout })
     lines.on('line', (line) => {
+      // A restart can leave a late message from the previous engine process.
       if (child !== process) return
       try {
         const message = { ...JSON.parse(line), session }

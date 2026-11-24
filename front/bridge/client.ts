@@ -1,4 +1,4 @@
-// Send commands to the local relay and subscribe to live simulation updates.
+// Browser commands and live updates from the relay.
 import type { LiveMessage, ReadyMessage } from './types'
 
 export function connectLive(onMessage: (message: LiveMessage) => void, onError: () => void) {

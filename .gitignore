@@ -1,3 +1,4 @@
+# Local build outputs, dependencies, and benchmark results.
 .DS_Store
 /front/node_modules/
 /front/dist/
@@ -8,5 +9,4 @@
 *.zip
 __pycache__/
 .pytest_cache/
-/Engine/tests/
 

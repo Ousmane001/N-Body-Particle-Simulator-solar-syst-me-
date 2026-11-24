@@ -1,5 +1,5 @@
-// Read live commands and send the current CPU state to the display as JSON.
-#include "nbody/live.hpp"
+// Live commands and JSON updates from the CPU engine.
+#include "live.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -30,6 +30,7 @@ std::vector<Group> groups_for(const InitialOptions& options, std::size_t count) 
     return groups;
 }
 void positions(std::ostream& output, const State& state) {
+    // Each body contributes three consecutive coordinates in the JSON array.
     output << '[';
     for (std::size_t i = 0; i < state.size(); ++i) {
         if (i) output << ',';
@@ -66,6 +67,7 @@ void run_live(CpuSimulation& simulation, const InitialOptions& options,
     output << std::setprecision(std::numeric_limits<double>::max_digits10);
     const auto& state = simulation.state();
     const auto groups = groups_for(options, state.size());
+    // The ready message gives the display its initial view and per-body metadata.
     double radius = 1.0;
     for (std::size_t i = 0; i < state.size(); ++i) radius = std::max(radius, std::hypot(state.x[i], state.y[i], state.z[i]));
     output << "{\"type\":\"ready\",\"scenario\":\"" << initial.frontend_scenario
@@ -82,8 +84,7 @@ void run_live(CpuSimulation& simulation, const InitialOptions& options,
     output << ",\"time\":0,\"step\":0}\n" << std::flush;
     if (!output) throw std::runtime_error("The live connection was closed.");
 
-    // Wait for work rather than running ahead of the display. Pausing means
-    // the relay stops requesting steps; the scientific state stays in memory.
+    // The relay pauses the simulation by leaving the engine waiting for a command.
     std::string line;
     while (std::getline(input, line)) {
         std::istringstream command(line);
