@@ -132,6 +132,24 @@ scripts/benchmark.sh gpu-optim --count 1024 --steps 20
 The CUDA variants use 256 threads per block by default. The tiled
 `gpu-optim` kernel uses a fixed 16 × 16 block, so its `--block-size` is 256.
 
+### Naive AoS baselines
+
+`cpu-naive-aos` and `gpu-naive-aos` store each body's position, velocity and
+mass in one `Body` object. The objects form an array of structures (AoS).
+Consecutive GPU threads read the same coordinate from different objects,
+so those reads are spaced by `sizeof(Body)` bytes. [CUDA strided accesses](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#strided-accesses)
+
+Both variants use the same direct force calculation and advance the bodies
+on the CPU. The GPU variant uses one thread per target body. For each force
+call, it uploads the body array and reads back the accelerations. Its two
+timings cover the kernel alone and the kernel with those transfers.
+
+```sh
+scripts/benchmark.sh cpu-naive-aos --count 1024 --steps 20
+scripts/benchmark.sh gpu-naive-aos --count 1024 --steps 20
+scripts/plot_benchmarks.py results/cpu-naive-aos.json results/gpu-naive-aos.json
+```
+
 ### Results and timing
 
 Each run replaces `results/<variant>.json`. The summary contains `algo`,

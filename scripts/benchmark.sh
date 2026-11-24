@@ -8,8 +8,10 @@ Usage: scripts/benchmark.sh <variant> [options]
 
 Variants:
   cpu-naive             Engine/src/cpu/naive.cpp
+  cpu-naive-aos         Engine/src/cpu/naive_aos.cpp
   cpu-optim             Engine/src/cpu/optim.cpp
   gpu-naive             Engine/src/gpu/naive.cu
+  gpu-naive-aos         Engine/src/gpu/naive_aos.cu
   gpu-optim             Engine/src/gpu/optim.cu
   gpu-advanced_optim    Engine/src/gpu/advanced_optim.cu
 
@@ -57,6 +59,12 @@ case "$variant" in
         ;;
     cpu-optim)
         target=nbody_cpu_optim
+        ;;
+    cpu-naive-aos)
+        target=nbody_cpu_naive_aos
+        ;;
+    gpu-naive-aos)
+        target=nbody_gpu_naive_aos
         ;;
     gpu-naive|gpu-optim|gpu-advanced_optim)
         target="nbody_gpu_${variant#gpu-}"

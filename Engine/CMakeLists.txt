@@ -36,9 +36,12 @@ target_link_libraries(nbody_cpu PRIVATE nbody_cpu_engine)
 add_executable(nbody_cpu_optim src/main.cpp src/cpu/optim.cpp)
 target_compile_definitions(nbody_cpu_optim PRIVATE NBODY_CPU_OPTIM)
 target_link_libraries(nbody_cpu_optim PRIVATE nbody_simulation)
+add_executable(nbody_cpu_naive_aos src/cpu/naive_aos.cpp)
+target_link_libraries(nbody_cpu_naive_aos PRIVATE nbody_common)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(nbody_cpu PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(nbody_cpu_optim PRIVATE -Wall -Wextra -Wpedantic -ffp-contract=off)
+    target_compile_options(nbody_cpu_naive_aos PRIVATE -Wall -Wextra -Wpedantic -ffp-contract=off)
 endif()
 
 include(CheckLanguage)
@@ -63,8 +66,11 @@ if(CMAKE_CUDA_COMPILER)
         add_executable("${target}" "src/gpu/${variant}.cu")
         target_link_libraries("${target}" PRIVATE "${target}_runner")
     endforeach()
+
+    add_executable(nbody_gpu_naive_aos src/gpu/naive_aos.cu)
+    target_link_libraries(nbody_gpu_naive_aos PRIVATE nbody_common)
 else()
-    foreach(variant IN LISTS cuda_variants)
+    foreach(variant IN ITEMS ${cuda_variants} naive_aos)
         add_custom_target("nbody_gpu_${variant}"
             COMMAND "${CMAKE_COMMAND}" -E echo "CUDA compiler not found. Install the NVIDIA CUDA Toolkit to build this GPU variant."
             COMMAND "${CMAKE_COMMAND}" -E false
