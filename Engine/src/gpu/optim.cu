@@ -547,10 +547,6 @@ public:
         );
     }
 
-    unsigned int grid_size() const noexcept {
-        return config_.grid_size;
-    }
-
 private:
 
    // Return GPU SoA structure

@@ -55,8 +55,16 @@ scripts/benchmark.sh cpu-naive --count 1024 --steps 20
 ```
 
 The script builds the AoS CPU baseline, runs the `cluster` scenario and
-writes `results/cpu-naive.json`. For a manual build, the
-executables go into `build/`.
+writes `results/cpu-naive.json`.
+
+The pairwise CPU version calculates each pair once and can split the work
+across multiple threads. Its result goes to `results/cpu-pairwise.json`.
+
+```sh
+scripts/benchmark.sh cpu-pairwise --count 1024 --steps 20 --threads 4
+```
+
+For a manual build, the executables go into `build/`.
 
 ```sh
 cmake -S Engine -B build
@@ -116,6 +124,8 @@ scripts/benchmark.sh gpu-naive --count 1024 --steps 20
 scripts/benchmark.sh gpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-optim --count 1024 --steps 20
 scripts/benchmark.sh gpu-advanced-optim --count 1024 --steps 20
+scripts/benchmark.sh gpu-pairwise --count 1024 --steps 20
+scripts/benchmark.sh gpu-pairwise-tiled --count 1024 --steps 20
 ```
 
 ## 5. Plot the results

@@ -9,10 +9,13 @@ Usage: scripts/benchmark.sh <variant> [options]
 Variants:
   cpu-naive             Engine/src/cpu/naive.cpp (AoS)
   cpu-coalesced-access  Engine/src/cpu/coalesced_access.cpp
+  cpu-pairwise          Engine/src/cpu/pairwise.cpp
   gpu-naive             Engine/src/gpu/naive.cu (AoS)
   gpu-coalesced-access  Engine/src/gpu/coalesced_access.cu
   gpu-optim             Engine/src/gpu/optim.cu
   gpu-advanced-optim    Engine/src/gpu/advanced_optim.cu
+  gpu-pairwise          Engine/src/gpu/pairwise.cu
+  gpu-pairwise-tiled    Engine/src/gpu/pairwise_tiled.cu
 
 GPU variants require the CUDA toolkit and an NVIDIA GPU.
 All benchmarks use the cluster scenario.
@@ -24,6 +27,7 @@ Options passed to the engine:
   --energy-every K      default: 0 (start and end only)
   --max-energy-drift X  optional relative limit, e.g. 0.001 for 0.1%
   --block-size N        GPU threads per block, default: 256
+  --threads N           CPU threads for cpu-pairwise, default: 1
 
 Each run replaces results/<variant>.json. A run over the energy limit
 still updates the summary and exits with status 2.
@@ -66,7 +70,7 @@ case "$variant" in
     cpu-coalesced-access)
         target=nbody_cpu
         ;;
-    cpu-naive|gpu-naive|gpu-coalesced-access|gpu-optim|gpu-advanced-optim)
+    cpu-naive|cpu-pairwise|gpu-naive|gpu-coalesced-access|gpu-optim|gpu-advanced-optim|gpu-pairwise|gpu-pairwise-tiled)
         target="nbody_${variant//-/_}"
         ;;
     *)

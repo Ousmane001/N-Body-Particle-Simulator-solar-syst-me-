@@ -7,6 +7,8 @@
 namespace nbody {
 // Direct target/source loop, ascending indices, self interaction omitted.
 void direct_acceleration(const State& state, const Parameters& parameters, Acceleration& result);
+void pairwise_acceleration(const State& state, const Parameters& parameters, Acceleration& result,
+                           std::size_t threads);
 
 // Positions and velocities describe the same time after each full step.
 class CpuSimulation {

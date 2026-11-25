@@ -35,13 +35,21 @@ int main(int argc, char** argv) {
     constexpr auto backend = NBODY_GPU_FORCE_VARIANT;
     constexpr auto program = backend;
     constexpr bool gpu = true;
+#elif defined(NBODY_CPU_PAIRWISE)
+    constexpr auto backend = "cpu-pairwise";
+    constexpr auto program = "nbody_cpu_pairwise";
+    constexpr bool gpu = false;
 #else
     constexpr auto backend = "cpu-coalesced-access";
     constexpr auto program = "nbody_cpu";
     constexpr bool gpu = false;
 #endif
     try {
+#ifdef NBODY_CPU_PAIRWISE
+        const auto options = parse_options(argc, argv, gpu, true);
+#else
         const auto options = parse_options(argc, argv, gpu);
+#endif
         auto initial = make_initial_conditions(options.initial, options.physics);
 #ifdef NBODY_GPU_FORCE_VARIANT
         // The CPU advances time and calls the GPU whenever it needs new accelerations.
@@ -52,7 +60,14 @@ int main(int argc, char** argv) {
             });
 #else
         const auto initial_compute_start = Clock::now();
+#ifdef NBODY_CPU_PAIRWISE
+        CpuSimulation simulation(std::move(initial.state), options.physics,
+            [threads = options.threads](const State& state, const Parameters& physics, Acceleration& result) {
+                pairwise_acceleration(state, physics, result, threads);
+            });
+#else
         CpuSimulation simulation(std::move(initial.state), options.physics);
+#endif
         Timings timings{seconds(Clock::now() - initial_compute_start)};
         if (options.steps == 0) {
             run_live(simulation, options.initial, initial, std::cin, std::cout);

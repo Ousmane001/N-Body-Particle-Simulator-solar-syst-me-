@@ -17,6 +17,7 @@ struct Options {
     std::uint64_t energy_every = 0;
     std::optional<double> max_energy_drift;
     unsigned int block_size = 0;
+    std::size_t threads = 1;
     bool json = false;
 };
 
@@ -36,7 +37,7 @@ struct EnergyReport {
     double max_absolute_drift = 0.0;
 };
 
-Options parse_options(int argc, char** argv, bool gpu = false);
+Options parse_options(int argc, char** argv, bool gpu = false, bool parallel_cpu = false);
 void record_gpu_force_timings(double compute, double with_transfer);
 std::optional<Timings> take_gpu_force_timings();
 int print_benchmark(const char* algo, const Options& options, std::optional<Timings> timings,

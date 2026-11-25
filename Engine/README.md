@@ -121,21 +121,31 @@ These examples use the same body count and number of steps.
 ```sh
 scripts/benchmark.sh cpu-naive --count 1024 --steps 20
 scripts/benchmark.sh cpu-coalesced-access --count 1024 --steps 20
+scripts/benchmark.sh cpu-pairwise --count 1024 --steps 20 --threads 4
 scripts/benchmark.sh gpu-naive --count 1024 --steps 20
 scripts/benchmark.sh gpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-optim --count 1024 --steps 20
 scripts/benchmark.sh gpu-advanced-optim --count 1024 --steps 20
+scripts/benchmark.sh gpu-pairwise --count 1024 --steps 20
+scripts/benchmark.sh gpu-pairwise-tiled --count 1024 --steps 20
 ```
 
 - `cpu-naive` and `gpu-naive` are the direct AoS baselines with one `Body` object per particle. In both cases, the CPU advances the simulation.
 - `cpu-coalesced-access` uses a SoA loop designed for CPU vectorization. The live frontend uses the same implementation. [CPU implementation](src/cpu/coalesced_access.cpp)
+- `cpu-pairwise` visits only pairs with `i < j`. Each thread sums its own accelerations for both bodies in a pair, then we add the private sums together. It uses one thread by default. On Slurm, request at least as many CPUs per task as you pass to `--threads`. [CPU implementation](src/cpu/pairwise.cpp)
 - `gpu-coalesced-access` loads SoA source data into shared memory in tiles and reuses its GPU buffers. The CPU advances the simulation. [CUDA implementation](src/gpu/coalesced_access.cu)
 - `gpu-optim` uses Houda Rachidi's 1D tiled force kernel. One thread computes the acceleration of one target body. [CUDA implementation](src/gpu/optim.cu)
 - `gpu-advanced-optim` uses Houda's block reduction kernel. One block computes partial sums for one target body and reduces them to a single acceleration. [CUDA implementation](src/gpu/advanced_optim.cu)
 
-Both variants keep the simulation state on the GPU between steps. The CUDA
-variants default to 256 threads per block. The block size for
+The two variants from Houda keep the simulation state on the GPU between steps.
+The CUDA variants default to 256 threads per block. The block size for
 `gpu-advanced-optim` must be a power of two.
+
+Both pairwise GPU variants compute only pairs with `i < j` and use the
+same CPU integration code.
+
+- `gpu-pairwise` assigns one body to each thread and atomically adds each pair's contribution to both bodies. [CUDA implementation](src/gpu/pairwise.cu)
+- `gpu-pairwise-tiled` assigns a 16 × 16 tile of pairs to each block. The block sums contributions in shared memory before making one atomic update per body and per component. [CUDA implementation](src/gpu/pairwise_tiled.cu)
 
 ### Naive AoS baselines
 
@@ -157,6 +167,7 @@ Each run replaces `results/<variant>.json`. The summary contains `algo`,
 
 - For CPU variants, both timing fields measure the initial force calculation and the integration steps.
 - For `gpu-naive` and `gpu-coalesced-access`, `compute_seconds` is the sum of the CUDA force kernel timings. The second field also includes the transfers for each force call.
+- For `gpu-pairwise` and `gpu-pairwise-tiled`, the two timings also include clearing the GPU acceleration arrays before each force calculation.
 - For `gpu-optim` and `gpu-advanced-optim`, `compute_seconds` covers the initial force calculation and integration on the GPU. The second field also includes the initial upload.
 
 Energy checks run outside the measured intervals, including the downloads

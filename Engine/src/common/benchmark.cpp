@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <locale>
 #include <stdexcept>
 #include <utility>
@@ -30,7 +31,7 @@ double number(const std::string& text) {
 }
 } // namespace
 
-Options parse_options(int argc, char** argv, bool gpu) {
+Options parse_options(int argc, char** argv, bool gpu, bool parallel_cpu) {
     Options options;
     if (gpu) options.block_size = 256;
     bool count_set = false;
@@ -38,7 +39,10 @@ Options parse_options(int argc, char** argv, bool gpu) {
     for (int i = 1; i < argc; ++i) {
         const std::string name = argv[i];
         if (name == "--help") {
-            std::cout << (gpu ? "CUDA N-body benchmark\n" : "Sequential CPU N-body simulation (C++17)\n")
+            if (gpu) std::cout << "CUDA N-body benchmark\n";
+            else if (parallel_cpu) std::cout << "Pairwise CPU N-body simulation (C++17)\n";
+            else std::cout << "Sequential CPU N-body simulation (C++17)\n";
+            std::cout
                       << "  --scenario solar|binary|cluster|galaxy|merger\n"
                       << "  --count N       default: solar 9, binary 2, others 1000\n"
                       << "  --galaxies N    2 to 4, for merger\n"
@@ -49,6 +53,7 @@ Options parse_options(int argc, char** argv, bool gpu) {
                       << "  --json          print the finite run summary as JSON\n";
             if (gpu) std::cout << "  --block-size N  threads per block, default 256; --steps is required.\n";
             else std::cout << "Without --steps: read 'step N' or 'quit' from stdin.\n";
+            if (parallel_cpu) std::cout << "  --threads N     CPU threads, default 1\n";
             std::exit(0);
         }
         if (name == "--json") {
@@ -78,6 +83,11 @@ Options parse_options(int argc, char** argv, bool gpu) {
             const auto threads = integer(value, name);
             if (threads > 1024) throw std::invalid_argument("Block size exceeds 1024.");
             options.block_size = static_cast<unsigned int>(threads);
+        } else if (name == "--threads" && parallel_cpu) {
+            const auto threads = integer(value, name);
+            if (threads > std::numeric_limits<std::size_t>::max())
+                throw std::invalid_argument("Thread count is too large.");
+            options.threads = static_cast<std::size_t>(threads);
         } else if (name == "--dt") options.physics.dt = number(value);
         else throw std::invalid_argument("Unknown option: " + name);
     }

@@ -13,6 +13,7 @@ METRICS = ("compute_seconds", "compute_with_transfer_seconds")
 COLORS = {
     "cpu-naive": "#1D4ED8",
     "cpu-coalesced-access": "#087F9B",
+    "cpu-pairwise": "#3730A3",
     "cpu-direct-soa": "#1E3A8A",
     "cpu-naive-aos": "#4F46E5",
     "cpu-optim": "#0369A1",
@@ -20,6 +21,8 @@ COLORS = {
     "gpu-coalesced-access": "#C2410C",
     "gpu-optim": "#BE185D",
     "gpu-advanced-optim": "#9D174D",
+    "gpu-pairwise": "#EA580C",
+    "gpu-pairwise-tiled": "#B91C1C",
     "gpu-direct-soa": "#9A3412",
     "gpu-naive-aos": "#854D0E",
     "gpu-advanced_optim": "#9F1239",
