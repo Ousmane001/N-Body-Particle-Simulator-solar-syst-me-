@@ -7,13 +7,11 @@ usage() {
 Usage: scripts/benchmark.sh <variant> [options]
 
 Variants:
-  cpu-naive             Engine/src/cpu/naive.cpp
-  cpu-naive-aos         Engine/src/cpu/naive_aos.cpp
-  cpu-optim             Engine/src/cpu/optim.cpp
-  gpu-naive             Engine/src/gpu/naive.cu
-  gpu-naive-aos         Engine/src/gpu/naive_aos.cu
+  cpu-naive             Engine/src/cpu/naive.cpp (AoS)
+  cpu-coalesced-access  Engine/src/cpu/coalesced_access.cpp
+  gpu-naive             Engine/src/gpu/naive.cu (AoS)
+  gpu-coalesced-access  Engine/src/gpu/coalesced_access.cu
   gpu-optim             Engine/src/gpu/optim.cu
-  gpu-advanced_optim    Engine/src/gpu/advanced_optim.cu
 
 GPU variants require the CUDA toolkit and an NVIDIA GPU.
 All benchmarks use the cluster scenario.
@@ -53,21 +51,22 @@ for argument in "$@"; do
     esac
 done
 case "$variant" in
-    cpu-naive|cpu-sequential)
-        variant=cpu-naive
-        target=nbody_cpu
+    cpu-naive-aos|gpu-naive-aos)
+        variant="${variant%-aos}"
         ;;
     cpu-optim)
-        target=nbody_cpu_optim
+        variant=cpu-coalesced-access
         ;;
-    cpu-naive-aos)
-        target=nbody_cpu_naive_aos
+    gpu-advanced_optim)
+        variant=gpu-coalesced-access
         ;;
-    gpu-naive-aos)
-        target=nbody_gpu_naive_aos
+esac
+case "$variant" in
+    cpu-coalesced-access)
+        target=nbody_cpu
         ;;
-    gpu-naive|gpu-optim|gpu-advanced_optim)
-        target="nbody_gpu_${variant#gpu-}"
+    cpu-naive|gpu-naive|gpu-coalesced-access|gpu-optim)
+        target="nbody_${variant//-/_}"
         ;;
     *)
         printf 'Unknown benchmark variant: %s\n' "$variant" >&2

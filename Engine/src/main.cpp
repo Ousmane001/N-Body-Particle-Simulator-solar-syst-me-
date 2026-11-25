@@ -36,13 +36,8 @@ int main(int argc, char** argv) {
     constexpr auto program = backend;
     constexpr bool gpu = true;
 #else
-#ifdef NBODY_CPU_OPTIM
-    constexpr auto backend = "cpu-optim";
-    constexpr auto program = "nbody_cpu_optim";
-#else
-    constexpr auto backend = "cpu-naive";
+    constexpr auto backend = "cpu-coalesced-access";
     constexpr auto program = "nbody_cpu";
-#endif
     constexpr bool gpu = false;
 #endif
     try {

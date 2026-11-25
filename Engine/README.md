@@ -22,7 +22,7 @@ and an NVIDIA GPU.
 
 - The state holds positions, velocities, masses and physics settings. [state.hpp](include/state.hpp)
 - The CPU and CUDA force functions calculate gravitational acceleration. [CPU](src/cpu/naive.cpp) · [CUDA](src/gpu/naive.cu)
-- The integrator advances the system using those accelerations. [simulation.cpp](src/common/simulation.cpp)
+- The integrator advances the system using those accelerations. [SoA integration](src/common/simulation.cpp) · [AoS integration](include/naive_aos.hpp)
 - The initial conditions define how bodies start in each scenario. [initial_conditions.cpp](src/common/initial_conditions.cpp)
 - The diagnostics calculate energy, momentum and center of mass. [diagnostics.cpp](src/common/diagnostics.cpp)
 - The main program selects live mode or a benchmark. [main.cpp](src/main.cpp)
@@ -120,21 +120,23 @@ These examples use the same body count and number of steps.
 
 ```sh
 scripts/benchmark.sh cpu-naive --count 1024 --steps 20
+scripts/benchmark.sh cpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-naive --count 1024 --steps 20
+scripts/benchmark.sh gpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-optim --count 1024 --steps 20
 ```
 
-- `cpu-naive` calculates accelerations and advances the simulation on the CPU.
-- `gpu-naive` uses Houda Rachidi's CUDA kernel for accelerations. The CPU updates positions and velocities, and each force call transfers data in both directions.
+- `cpu-naive` and `gpu-naive` are the direct AoS baselines with one `Body` object per particle. In both cases, the CPU advances the simulation.
+- `cpu-coalesced-access` uses a SoA loop designed for CPU vectorization. The live frontend uses the same implementation. [CPU implementation](src/cpu/coalesced_access.cpp)
+- `gpu-coalesced-access` loads SoA source data into shared memory in tiles and reuses its GPU buffers. The CPU advances the simulation. [CUDA implementation](src/gpu/coalesced_access.cu)
 - `gpu-optim` uses Houda Rachidi's 2D tiled force kernel. Each block works on a pair of groups in shared memory. The simulation state stays on the GPU between steps. [CUDA implementation](src/gpu/optim.cu)
-- `cpu-optim` and `gpu-advanced_optim` are placeholders that report an error when run.
 
 The CUDA variants use 256 threads per block by default. The tiled
 `gpu-optim` kernel uses a fixed 16 × 16 block, so its `--block-size` is 256.
 
 ### Naive AoS baselines
 
-`cpu-naive-aos` and `gpu-naive-aos` store each body's position, velocity and
+`cpu-naive` and `gpu-naive` store each body's position, velocity and
 mass in one `Body` object. The objects form an array of structures (AoS).
 Consecutive GPU threads read the same coordinate from different objects,
 so those reads are spaced by `sizeof(Body)` bytes. [CUDA strided accesses](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#strided-accesses)
@@ -144,20 +146,14 @@ on the CPU. The GPU variant uses one thread per target body. For each force
 call, it uploads the body array and reads back the accelerations. Its two
 timings cover the kernel alone and the kernel with those transfers.
 
-```sh
-scripts/benchmark.sh cpu-naive-aos --count 1024 --steps 20
-scripts/benchmark.sh gpu-naive-aos --count 1024 --steps 20
-scripts/plot_benchmarks.py results/cpu-naive-aos.json results/gpu-naive-aos.json
-```
-
 ### Results and timing
 
 Each run replaces `results/<variant>.json`. The summary contains `algo`,
 `nbodies`, `steps`, `compute_seconds`, `compute_with_transfer_seconds`,
 `simulated_time_per_step` and `energy_delta`.
 
-- For `cpu-naive`, both timing fields measure the initial force calculation and the integration steps.
-- For `gpu-naive`, `compute_seconds` is the sum of the CUDA force kernel timings. The second field also includes the transfers for each force call.
+- For CPU variants, both timing fields measure the initial force calculation and the integration steps.
+- For `gpu-naive` and `gpu-coalesced-access`, `compute_seconds` is the sum of the CUDA force kernel timings. The second field also includes the transfers for each force call.
 - For `gpu-optim`, `compute_seconds` covers the initial force calculation and the integration on the GPU, including clearing the acceleration buffer before each force calculation. The second field also includes the initial upload.
 
 Energy checks run outside the measured intervals. For `gpu-optim`, this also
@@ -178,11 +174,12 @@ exceeds the limit saves its JSON and exits with status 2.
 ## 7. Plot benchmark results
 
 ```sh
-scripts/plot_benchmarks.py results/cpu-naive.json results/gpu-naive.json results/gpu-optim.json
+scripts/plot_benchmarks.py results/gpu-naive.json results/gpu-coalesced-access.json
 ```
 
 The input files must share the same `nbodies` and `steps`. The script creates
-`results/compute_seconds.png` and `results/compute_with_transfer_seconds.png`,
-with algorithms shown in the input order. Plotting requires Python 3 and
-gnuplot, available via `brew install gnuplot` on macOS or
+one PNG per JSON in `results/plots/`. The two points show the compute-only
+time and the time including transfers. The same y-axis scale is used across
+the images, and each algorithm has a fixed color. Plotting requires Python 3
+and gnuplot, available via `brew install gnuplot` on macOS or
 `sudo apt install gnuplot` on Debian/Ubuntu.

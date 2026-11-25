@@ -1,45 +1,45 @@
-// Direct calculation of gravitational acceleration on the CPU.
-#include "cpu.hpp"
+// Direct CPU forces with one object per body.
+#include "naive_aos.hpp"
 #include <cmath>
-#include <stdexcept>
+#include <iostream>
 
-namespace nbody {
-void direct_acceleration(const State& state, const Parameters& parameters,
-                         Acceleration& acceleration) {
-    state.validate();
-    parameters.validate();
-    const std::size_t body_count = state.size();
-    acceleration.x.resize(body_count);
-    acceleration.y.resize(body_count);
-    acceleration.z.resize(body_count);
-    const double epsilon_squared = parameters.softening * parameters.softening;
-
-    // Each iteration writes the acceleration of a single target body.
-    for (std::size_t i = 0; i < body_count; ++i) {
-        double ax = 0.0, ay = 0.0, az = 0.0;
-        for (std::size_t j = 0; j < body_count; ++j) {
-            if (i == j) continue; // A body does not attract itself.
-
-            const double dx = state.x[j] - state.x[i];
-            const double dy = state.y[j] - state.y[i];
-            const double dz = state.z[j] - state.z[i];
-            const double distance_squared = dx*dx + dy*dy + dz*dz + epsilon_squared;
-            if (!(distance_squared > 0.0) || !std::isfinite(distance_squared))
-                throw std::domain_error("Invalid pair distance; use positive softening for coincident bodies.");
-
-            const double inverse_distance = 1.0 / std::sqrt(distance_squared);
-            const double inverse_distance_cubed = inverse_distance * inverse_distance * inverse_distance;
-            // a = F / m_i: the target mass cancels, leaving the source mass.
-            const double factor = parameters.gravitational_constant * state.mass[j] * inverse_distance_cubed;
-            ax += factor * dx;
-            ay += factor * dy;
-            az += factor * dz;
+namespace {
+void calculate_forces(const std::vector<nbody::Body>& bodies, const nbody::Parameters& physics,
+                      std::vector<nbody::Vec3>& accelerations) {
+    const double epsilon_squared = physics.softening * physics.softening;
+    // We visit every source body for each target, skipping self-interactions.
+    for (std::size_t i = 0; i < bodies.size(); ++i) {
+        const auto& target = bodies[i].position;
+        nbody::Vec3 sum{};
+        for (std::size_t j = 0; j < bodies.size(); ++j) {
+            if (i == j) continue;
+            const auto& source = bodies[j];
+            const double dx = source.position.x - target.x;
+            const double dy = source.position.y - target.y;
+            const double dz = source.position.z - target.z;
+            const double r2 = dx * dx + dy * dy + dz * dz + epsilon_squared;
+            if (!(r2 > 0.0) || !std::isfinite(r2))
+                throw std::domain_error("Invalid pair distance.");
+            const double inverse_r = 1.0 / std::sqrt(r2);
+            const double factor = physics.gravitational_constant * source.mass *
+                                  (inverse_r * inverse_r * inverse_r);
+            sum.x += factor * dx;
+            sum.y += factor * dy;
+            sum.z += factor * dz;
         }
-        if (!std::isfinite(ax) || !std::isfinite(ay) || !std::isfinite(az))
+        if (!std::isfinite(sum.x) || !std::isfinite(sum.y) || !std::isfinite(sum.z))
             throw std::overflow_error("Acceleration overflow.");
-        acceleration.x[i] = ax;
-        acceleration.y[i] = ay;
-        acceleration.z[i] = az;
+        accelerations[i] = sum;
     }
 }
-} // namespace nbody
+} // namespace
+
+int main(int argc, char** argv) {
+    try {
+        const auto options = nbody::parse_options(argc, argv);
+        return nbody::run_aos_benchmark("cpu-naive", options, calculate_forces);
+    } catch (const std::exception& error) {
+        std::cerr << "cpu-naive: " << error.what() << '\n';
+        return 1;
+    }
+}

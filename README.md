@@ -54,8 +54,8 @@ cd nbody-gpu
 scripts/benchmark.sh cpu-naive --count 1024 --steps 20
 ```
 
-The script configures and builds the engine with CMake, runs the `cluster`
-scenario and writes `results/cpu-naive.json`. For a manual build, the
+The script builds the AoS CPU baseline, runs the `cluster` scenario and
+writes `results/cpu-naive.json`. For a manual build, the
 executables go into `build/`.
 
 ```sh
@@ -113,6 +113,7 @@ steps as the CPU run above.
 
 ```sh
 scripts/benchmark.sh gpu-naive --count 1024 --steps 20
+scripts/benchmark.sh gpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-optim --count 1024 --steps 20
 ```
 
@@ -124,15 +125,18 @@ From the repository root, this command plots the result from the CPU benchmark.
 scripts/plot_benchmarks.py results/cpu-naive.json
 ```
 
-After the CUDA runs, the same script can compare all three results. The JSON
+After the CUDA runs, the same script can compare the results. The JSON
 files must have the same body count and step count.
 
 ```sh
-scripts/plot_benchmarks.py results/cpu-naive.json results/gpu-naive.json results/gpu-optim.json
+scripts/plot_benchmarks.py results/cpu-naive.json results/gpu-naive.json \
+  results/gpu-coalesced-access.json results/gpu-optim.json
 ```
 
-The graphs are saved as `results/compute_seconds.png` and
-`results/compute_with_transfer_seconds.png`.
+The script saves one PNG per input in `results/plots/`. Each line joins the
+compute-only time and the time including transfers. CPU variants use shades
+of blue, and GPU variants use warmer colors. The y-axis scale is shared
+across the images from the same run.
 
 ## Project layout
 
