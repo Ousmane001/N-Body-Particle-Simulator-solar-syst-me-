@@ -124,15 +124,18 @@ scripts/benchmark.sh cpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-naive --count 1024 --steps 20
 scripts/benchmark.sh gpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-optim --count 1024 --steps 20
+scripts/benchmark.sh gpu-advanced-optim --count 1024 --steps 20
 ```
 
 - `cpu-naive` and `gpu-naive` are the direct AoS baselines with one `Body` object per particle. In both cases, the CPU advances the simulation.
 - `cpu-coalesced-access` uses a SoA loop designed for CPU vectorization. The live frontend uses the same implementation. [CPU implementation](src/cpu/coalesced_access.cpp)
 - `gpu-coalesced-access` loads SoA source data into shared memory in tiles and reuses its GPU buffers. The CPU advances the simulation. [CUDA implementation](src/gpu/coalesced_access.cu)
-- `gpu-optim` uses Houda Rachidi's 2D tiled force kernel. Each block works on a pair of groups in shared memory. The simulation state stays on the GPU between steps. [CUDA implementation](src/gpu/optim.cu)
+- `gpu-optim` uses Houda Rachidi's 1D tiled force kernel. One thread computes the acceleration of one target body. [CUDA implementation](src/gpu/optim.cu)
+- `gpu-advanced-optim` uses Houda's block reduction kernel. One block computes partial sums for one target body and reduces them to a single acceleration. [CUDA implementation](src/gpu/advanced_optim.cu)
 
-The CUDA variants use 256 threads per block by default. The tiled
-`gpu-optim` kernel uses a fixed 16 × 16 block, so its `--block-size` is 256.
+Both variants keep the simulation state on the GPU between steps. The CUDA
+variants default to 256 threads per block. The block size for
+`gpu-advanced-optim` must be a power of two.
 
 ### Naive AoS baselines
 
@@ -154,10 +157,10 @@ Each run replaces `results/<variant>.json`. The summary contains `algo`,
 
 - For CPU variants, both timing fields measure the initial force calculation and the integration steps.
 - For `gpu-naive` and `gpu-coalesced-access`, `compute_seconds` is the sum of the CUDA force kernel timings. The second field also includes the transfers for each force call.
-- For `gpu-optim`, `compute_seconds` covers the initial force calculation and the integration on the GPU, including clearing the acceleration buffer before each force calculation. The second field also includes the initial upload.
+- For `gpu-optim` and `gpu-advanced-optim`, `compute_seconds` covers the initial force calculation and integration on the GPU. The second field also includes the initial upload.
 
-Energy checks run outside the measured intervals. For `gpu-optim`, this also
-keeps the copies back to the CPU for energy validation out of both timings.
+Energy checks run outside the measured intervals, including the downloads
+used to check energy in the two GPU integration variants.
 
 ### Energy checks
 
@@ -175,6 +178,9 @@ exceeds the limit saves its JSON and exits with status 2.
 
 ```sh
 scripts/plot_benchmarks.py results/gpu-naive.json results/gpu-coalesced-access.json
+
+# Comparison of Houda's two GPU integration variants
+scripts/plot_benchmarks.py results/gpu-optim.json results/gpu-advanced-optim.json
 ```
 
 The input files must share the same `nbodies` and `steps`. The script creates

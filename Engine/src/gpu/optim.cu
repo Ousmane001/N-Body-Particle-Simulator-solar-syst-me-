@@ -1,336 +1,657 @@
-// Houda's CUDA force calculation with 2D tiles and GPU integration.
 #include <cuda_runtime.h>
 #include "benchmark.hpp"
+#include "gpu.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
-constexpr unsigned int TILE_SIZE = 16;
-struct Vector { double x, y, z; };
-struct Body {
-    Vector position, velocity;
-    double mass;
+
+using Vector = nbody::Vec3;
+
+struct DevicePhysics {
+    double gravitational_constant;
+    double softening_squared;
+    double dt;
 };
 
-__device__ void add_acceleration(double* component, double contribution) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 600
-    // Older CUDA targets need a compare-and-swap for double precision.
-    auto* bits = reinterpret_cast<unsigned long long*>(component);
-    auto previous = atomicCAS(bits, 0ULL, 0ULL);
-    unsigned long long expected;
-    do {
-        expected = previous;
-        const double sum = __longlong_as_double(expected) + contribution;
-        previous = atomicCAS(bits, expected, __double_as_longlong(sum));
-    } while (previous != expected);
-#else
-    atomicAdd(component, contribution);
-#endif
-}
+struct KernelConfig {
+    unsigned int tile_size = 256;
+    unsigned int block_size = 256;
+    unsigned int grid_size = 0; // 0 means automatic
+};
 
-__global__
-void calculate_acceleration_tiled(
-    const Body* bodies,
-    Vector* acceleration,
-    unsigned int count,
-    double gravity,
-    double softening_squared
-) {
-    // Shared memory containing complete Body structures
-    // The body whose acceleration we want to calculate
-    __shared__ Body target_tile[TILE_SIZE];
-    __shared__ Body source_tile[TILE_SIZE];
+struct DeviceState {
+    double* x;
+    double* y;
+    double* z;
+    double* vx;
+    double* vy;
+    double* vz;
+    double* mass;
+};
+// In the constant memory
+__constant__ DevicePhysics physics_const;
 
-    // Thread coordinates inside the block
-    const unsigned int tx = threadIdx.x;
-    const unsigned int ty = threadIdx.y;
-
-    // Global target and source indices
-    const unsigned int i = blockIdx.x * TILE_SIZE + tx;
-    const unsigned int j = blockIdx.y * TILE_SIZE + ty;
-
-    // Load target bodies: one thread per target
-    if (ty == 0 && i < count) {
-        target_tile[tx] = bodies[i];
-    }
-
-    // Load source bodies: one thread per source
-    if (tx == 0 && j < count) {
-        source_tile[ty] = bodies[j];
-    }
-
-    // Wait until both tiles are loaded
-    __syncthreads();
-
-    // Calculate interaction between target i and source j
-    if (i < count && j < count && i != j) {
-
-        const Vector target = target_tile[tx].position;
-        const Body source = source_tile[ty];
-
-        const double dx = source.position.x - target.x;
-        const double dy = source.position.y - target.y;
-        const double dz = source.position.z - target.z;
-
-        const double r2 =
-            dx * dx + dy * dy + dz * dz + softening_squared;
-
-        if (r2 > 0.0 && isfinite(r2)) {
-
-            const double inverse_r = 1.0 / sqrt(r2);
-
-            const double factor =
-                gravity * source.mass *
-                inverse_r * inverse_r * inverse_r;
-
-            const double ax = factor * dx;
-            const double ay = factor * dy;
-            const double az = factor * dz;
-
-            // Accumulate contributions from different source tiles
-            add_acceleration(&acceleration[i].x, ax);
-            add_acceleration(&acceleration[i].y, ay);
-            add_acceleration(&acceleration[i].z, az);
-        }
-    }
-}
-
-__global__ void kick_and_drift(Body* bodies, const Vector* acceleration, unsigned int count, double dt) {
-    const auto i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= count) return;
-
-    const double half_dt = 0.5 * dt;
-    auto& body = bodies[i];
-    body.velocity.x += half_dt * acceleration[i].x;
-    body.velocity.y += half_dt * acceleration[i].y;
-    body.velocity.z += half_dt * acceleration[i].z;
-    body.position.x += dt * body.velocity.x;
-    body.position.y += dt * body.velocity.y;
-    body.position.z += dt * body.velocity.z;
-}
-
-__global__ void finish_kick(Body* bodies, const Vector* acceleration, unsigned int count, double half_dt) {
-    const auto i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= count) return;
-
-    bodies[i].velocity.x += half_dt * acceleration[i].x;
-    bodies[i].velocity.y += half_dt * acceleration[i].y;
-    bodies[i].velocity.z += half_dt * acceleration[i].z;
-}
+// 2. CUDA error handling and memory allocation
 
 void check_cuda(cudaError_t error, const char* operation) {
-    if (error != cudaSuccess)
-        throw std::runtime_error(std::string(operation) + ": " + cudaGetErrorString(error));
+    if (error != cudaSuccess) {
+        throw std::runtime_error(
+            std::string(operation) + ": " +
+            cudaGetErrorString(error)
+        );
+    }
 }
 
 template <typename T>
 auto device_buffer(unsigned int count) {
     T* buffer = nullptr;
-    check_cuda(cudaMalloc(&buffer, sizeof(T) * count), "Allocate GPU memory");
-    return std::unique_ptr<T, decltype(&cudaFree)>(buffer, cudaFree);
+
+    check_cuda(
+        cudaMalloc(&buffer, sizeof(T) * count),
+        "Allocate GPU memory"
+    );
+
+    return std::unique_ptr<T, decltype(&cudaFree)>(
+        buffer, cudaFree
+    );
 }
 
-auto host_buffer(unsigned int count) {
-    Body* buffer = nullptr;
-    check_cuda(cudaMallocHost(&buffer, sizeof(Body) * count), "Allocate pinned host memory");
-    std::uninitialized_default_construct_n(buffer, count);
-    return std::unique_ptr<Body[], decltype(&cudaFreeHost)>(buffer, cudaFreeHost);
+// 3. 1D tiled acceleration kernel
+
+__global__ void calculate_acceleration_tiled(
+    const DeviceState bodies,
+    Vector* acceleration,
+    unsigned int count,
+    unsigned int tile_size
+) {
+    // Dynamic shared memory:
+    // [sx | sy | sz | sm]
+    extern __shared__ double shared[];
+
+    double* sx = shared;
+    double* sy = sx + tile_size;
+    double* sz = sy + tile_size;
+    double* sm = sz + tile_size;
+
+    const unsigned int tid = threadIdx.x;
+
+    // One thread computes the acceleration of one target body.
+    const unsigned int i =
+        blockIdx.x * blockDim.x + tid;
+
+    const bool valid = i < count;
+
+    // Load target body's position.
+    double xi = 0.0;
+    double yi = 0.0;
+    double zi = 0.0;
+
+    if (valid) {
+        xi = bodies.x[i];
+        yi = bodies.y[i];
+        zi = bodies.z[i];
+    }
+
+    // Local acceleration accumulator.
+    double ax = 0.0;
+    double ay = 0.0;
+    double az = 0.0;
+
+    bool invalid_interaction = false;
+
+    // Iterate over all source bodies, tile by tile.
+    for (unsigned int base = 0; base < count; base += tile_size) {
+        // This also works when tile_size != blockDim.x.
+        for (unsigned int k = tid; k < tile_size; k += blockDim.x) {
+            const unsigned int j = base + k;
+            if (j < count) {
+                sx[k] = bodies.x[j];
+                sy[k] = bodies.y[j];
+                sz[k] = bodies.z[j];
+                sm[k] = bodies.mass[j];
+            } else {
+                sx[k] = 0.0;
+                sy[k] = 0.0;
+                sz[k] = 0.0;
+                sm[k] = 0.0;
+            }
+        }
+        // Wait until the complete tile is loaded.
+        __syncthreads();
+
+        // Each thread processes the loaded source tile
+        if (valid && !invalid_interaction) {
+            for (unsigned int k = 0; k < tile_size; ++k) {
+
+                const unsigned int j = base + k;
+                if (j >= count || j == i) {
+                    continue;
+                }
+                const double dx = sx[k] - xi;
+                const double dy = sy[k] - yi;
+                const double dz = sz[k] - zi;
+
+                const double r2 =
+                    dx * dx +
+                    dy * dy +
+                    dz * dz +
+                    physics_const.softening_squared;
+
+                if (!(r2 > 0.0) || !isfinite(r2)) {
+                    invalid_interaction = true;
+                    break;
+                }
+
+                const double inverse_r = 1.0 / sqrt(r2);
+
+                const double factor =
+                    physics_const.gravitational_constant * sm[k] *
+                    inverse_r * inverse_r * inverse_r;
+
+                ax += factor * dx;
+                ay += factor * dy;
+                az += factor * dz;
+            }
+        }
+        // All threads must finish reading the tile before
+        __syncthreads();
+    }
+
+    // Write one acceleration per target body.
+    if (valid) {
+        if (invalid_interaction) {
+            const double invalid = nan("");
+
+            acceleration[i] = {
+                invalid, invalid, invalid
+            };
+        } else {
+            acceleration[i] = {ax, ay, az};
+        }
+    }
 }
+
+// 4. First half of kick and drift
+
+__global__ void kick_and_drift(
+    DeviceState bodies,
+    const Vector* acceleration,
+    unsigned int count
+) {
+    const unsigned int i =
+        blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i >= count) {
+        return;
+    }
+    const double dt = physics_const.dt;
+    const double half_dt = 0.5 * dt;
+
+    // First half-kick.
+    bodies.vx[i] += half_dt * acceleration[i].x;
+    bodies.vy[i] += half_dt * acceleration[i].y;
+    bodies.vz[i] += half_dt * acceleration[i].z;
+
+    // Drift.
+    bodies.x[i] += dt * bodies.vx[i];
+    bodies.y[i] += dt * bodies.vy[i];
+    bodies.z[i] += dt * bodies.vz[i];
+}
+
+// 5. Second half of kick
+
+__global__ void finish_kick(
+    DeviceState bodies,
+    const Vector* acceleration,
+    unsigned int count
+) {
+    const unsigned int i =
+        blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i >= count) {
+        return;
+    }
+
+    const double half_dt = 0.5 * physics_const.dt;
+
+    bodies.vx[i] += half_dt * acceleration[i].x;
+    bodies.vy[i] += half_dt * acceleration[i].y;
+    bodies.vz[i] += half_dt * acceleration[i].z;
+}
+
+// 6. CUDA event wrapper
 
 class Event {
 public:
-    Event() { check_cuda(cudaEventCreate(&event_), "Create CUDA event"); }
-    ~Event() { cudaEventDestroy(event_); }
+    Event() {
+        check_cuda(
+            cudaEventCreate(&event_),
+            "Create CUDA event"
+        );
+    }
+
+    ~Event() {
+        cudaEventDestroy(event_);
+    }
+
     Event(const Event&) = delete;
     Event& operator=(const Event&) = delete;
 
-    void record() const { check_cuda(cudaEventRecord(event_), "Record CUDA event"); }
-    void wait() const { check_cuda(cudaEventSynchronize(event_), "Wait for CUDA event"); }
+    void record() const {
+        check_cuda(
+            cudaEventRecord(event_),
+            "Record CUDA event"
+        );
+    }
+
+    void wait() const {
+        check_cuda(
+            cudaEventSynchronize(event_),
+            "Wait for CUDA event"
+        );
+    }
+
     double seconds_since(const Event& start) const {
-        float ms = 0;
-        check_cuda(cudaEventElapsedTime(&ms, start.event_, event_), "Read CUDA event time");
-        return ms / 1000.0;
+        float milliseconds = 0.0f;
+
+        check_cuda(
+            cudaEventElapsedTime(
+                &milliseconds,
+                start.event_,
+                event_
+            ),
+            "Read CUDA event time"
+        );
+
+        return milliseconds / 1000.0;
     }
 
 private:
     cudaEvent_t event_ = nullptr;
 };
 
+// 7. GPU simulation
+
 class GpuSimulation {
 
 public:
-    GpuSimulation(unsigned int count, nbody::Parameters physics)
+
+    GpuSimulation(
+        unsigned int count,
+        nbody::Parameters physics,
+        KernelConfig config
+    )
         : count_(count),
-        block_size_(TILE_SIZE, TILE_SIZE),
-        grid_size_(
-            (count + TILE_SIZE - 1) / TILE_SIZE,
-            (count + TILE_SIZE - 1) / TILE_SIZE
-        ),
-        physics_(physics),
-        bodies_(device_buffer<Body>(count)),
-        acceleration_(device_buffer<Vector>(count)),
-        host_(host_buffer(count))
-    {}
+          config_(config),
+          physics_(physics),
 
-    ~GpuSimulation() {
-        cudaStreamSynchronize(nullptr);
-    }
+          x_(device_buffer<double>(count)),
+          y_(device_buffer<double>(count)),
+          z_(device_buffer<double>(count)),
 
-    // Prepare initial data
-    void prepare(const nbody::State& state) {
+          vx_(device_buffer<double>(count)),
+          vy_(device_buffer<double>(count)),
+          vz_(device_buffer<double>(count)),
 
-        for (unsigned int i = 0; i < count_; ++i) {
+          mass_(device_buffer<double>(count)),
 
-            host_[i] = {
-                {state.x[i], state.y[i], state.z[i]},
-                {state.vx[i], state.vy[i], state.vz[i]},
-                state.mass[i]
-            };
+          acceleration_(device_buffer<Vector>(count))
+    {
+        if (count_ == 0) {
+            throw std::invalid_argument(
+                "The number of bodies must be positive."
+            );
+        }
+
+        if (config_.tile_size == 0 ||
+            config_.block_size == 0) {
+            throw std::invalid_argument(
+                "Tile size and block size must be positive."
+            );
+        }
+
+        // Automatically calculate grid size if not specified.
+        const unsigned int minimum_grid =
+            (count_ + config_.block_size - 1)
+            / config_.block_size;
+
+        if (config_.grid_size == 0) {
+            config_.grid_size = minimum_grid;
+        }
+
+        if (config_.grid_size < minimum_grid) {
+            throw std::invalid_argument(
+                "Grid size is too small to process all bodies."
+            );
+        }
+
+        // Validate block size against GPU limits.
+        int device = 0;
+        int max_threads = 0;
+        int max_shared_memory = 0;
+
+        check_cuda(cudaGetDevice(&device), "Get CUDA device");
+
+        check_cuda(
+            cudaDeviceGetAttribute(
+                &max_threads,
+                cudaDevAttrMaxThreadsPerBlock,
+                device
+            ),
+            "Get maximum threads per block"
+        );
+
+        check_cuda(
+            cudaDeviceGetAttribute(
+                &max_shared_memory,
+                cudaDevAttrMaxSharedMemoryPerBlock,
+                device
+            ),
+            "Get maximum shared memory"
+        );
+
+        if (config_.block_size > static_cast<unsigned int>(max_threads)) {
+            throw std::invalid_argument(
+                "Block size exceeds the GPU limit."
+            );
+        }
+
+        const std::size_t shared_bytes =
+            4ULL * config_.tile_size * sizeof(double);
+
+        if (shared_bytes > max_shared_memory) {
+            throw std::invalid_argument(
+                "Tile size requires too much shared memory."
+            );
         }
     }
 
-    // Upload data to GPU
-    void upload() {
+    // Upload initial state: CPU SoA -> GPU SoA
+
+    void upload(const nbody::State& state) {
+
+        state.validate();
+
+        if (state.size() != count_) {
+            throw std::invalid_argument(
+                "State size does not match GPU simulation size."
+            );
+        }
+
+        const std::size_t bytes =
+            count_ * sizeof(double);
 
         check_cuda(
-            cudaMemcpyAsync(
-                bodies_.get(),
-                // points to the pinned memory
-                host_.get(),
-                sizeof(Body) * count_,
-                cudaMemcpyHostToDevice
-            ),
-            "Copy initial state to GPU"
+            cudaMemcpy(x_.get(), state.x.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload x"
         );
 
+        check_cuda(
+            cudaMemcpy(y_.get(), state.y.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload y"
+        );
+
+        check_cuda(
+            cudaMemcpy(z_.get(), state.z.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload z"
+        );
+
+        check_cuda(
+            cudaMemcpy(vx_.get(), state.vx.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload vx"
+        );
+
+        check_cuda(
+            cudaMemcpy(vy_.get(), state.vy.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload vy"
+        );
+
+        check_cuda(
+            cudaMemcpy(vz_.get(), state.vz.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload vz"
+        );
+
+        check_cuda(
+            cudaMemcpy(mass_.get(), state.mass.data(), bytes,
+                       cudaMemcpyHostToDevice),
+            "Upload mass"
+        );
     }
+
+    void upload_physics() {
+        DevicePhysics physics_data{
+            physics_.gravitational_constant,
+            physics_.softening * physics_.softening,
+            physics_.dt
+        };
+
+        check_cuda(
+            cudaMemcpyToSymbol(
+                physics_const,
+                &physics_data,
+                sizeof(DevicePhysics)
+            ),
+            "Copy physics parameters to constant memory"
+        );
+    }
+
+    // Initialize acceleration
 
     void initialize_acceleration() {
         update_acceleration();
     }
 
     // Advance simulation
+
     void advance(std::uint64_t steps) {
+
         for (std::uint64_t step = 0; step < steps; ++step) {
 
-            kick_and_drift<<<grid_size_.x, block_size_.x>>>(
-                bodies_.get(), acceleration_.get(), count_, physics_.dt
+            // First half-kick + drift.
+            kick_and_drift<<<
+                config_.grid_size,
+                config_.block_size
+            >>>(
+                device_state(),
+                acceleration_.get(),
+                count_
             );
 
-            check_cuda(cudaGetLastError(), "Launch kick and drift");
+            check_cuda(
+                cudaGetLastError(),
+                "Launch kick and drift"
+            );
 
+            // Recalculate acceleration at new positions.
             update_acceleration();
 
-            finish_kick<<<grid_size_.x, block_size_.x>>>(
-                bodies_.get(), acceleration_.get(), count_,
-                0.5 * physics_.dt
+            // Second half-kick.
+            finish_kick<<<
+                config_.grid_size,
+                config_.block_size
+            >>>(
+                device_state(),
+                acceleration_.get(),
+                count_
             );
 
-            check_cuda(cudaGetLastError(), "Launch final kick");
+            check_cuda(
+                cudaGetLastError(),
+                "Launch finish kick"
+            );
         }
     }
 
-    // Download results
-    void download() {
+    // Download GPU -> CPU
+
+    void download(nbody::State& state) const {
+
+        const std::size_t bytes =
+            count_ * sizeof(double);
 
         check_cuda(
-            cudaMemcpyAsync(
-                host_.get(),
-                bodies_.get(),
-                sizeof(Body) * count_,
-                cudaMemcpyDeviceToHost
-            ),
-            "Copy state back to host"
+            cudaMemcpy(state.x.data(), x_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download x"
+        );
+
+        check_cuda(
+            cudaMemcpy(state.y.data(), y_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download y"
+        );
+
+        check_cuda(
+            cudaMemcpy(state.z.data(), z_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download z"
+        );
+
+        check_cuda(
+            cudaMemcpy(state.vx.data(), vx_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download vx"
+        );
+
+        check_cuda(
+            cudaMemcpy(state.vy.data(), vy_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download vy"
+        );
+
+        check_cuda(
+            cudaMemcpy(state.vz.data(), vz_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download vz"
+        );
+
+        check_cuda(
+            cudaMemcpy(state.mass.data(), mass_.get(), bytes,
+                       cudaMemcpyDeviceToHost),
+            "Download mass"
         );
     }
 
-    // Calculate energy
-
-    double energy(nbody::State& state) const {
-
-        for (unsigned int i = 0; i < count_; ++i) {
-
-            const auto& body = host_[i];
-
-            state.x[i] = body.position.x;
-            state.y[i] = body.position.y;
-            state.z[i] = body.position.z;
-
-            state.vx[i] = body.velocity.x;
-            state.vy[i] = body.velocity.y;
-            state.vz[i] = body.velocity.z;
-
-            state.mass[i] = body.mass;
-        }
-
-        return nbody::diagnostics(state, physics_).total_energy();
+    unsigned int grid_size() const noexcept {
+        return config_.grid_size;
     }
 
 private:
 
-    // Update acceleration using the 2D tiled kernel
+   // Return GPU SoA structure
+
+    DeviceState device_state() const {
+        return {
+            x_.get(),
+            y_.get(),
+            z_.get(),
+            vx_.get(),
+            vy_.get(),
+            vz_.get(),
+            mass_.get()
+        };
+    }
+
+    // Update acceleration using 1D tiling
 
     void update_acceleration() {
 
-        check_cuda(
-            cudaMemsetAsync(acceleration_.get(), 0,
-                            sizeof(Vector) * count_),
-            "Initialize acceleration"
-        );
+        const std::size_t shared_bytes =
+            4ULL * config_.tile_size * sizeof(double);
 
-        calculate_acceleration_tiled<<<grid_size_, block_size_>>>(
-            bodies_.get(),
+        calculate_acceleration_tiled<<<
+            config_.grid_size,
+            config_.block_size,
+            shared_bytes
+        >>>(
+            device_state(),
             acceleration_.get(),
             count_,
-            physics_.gravitational_constant,
-            physics_.softening * physics_.softening
+            config_.tile_size
         );
 
-        check_cuda(cudaGetLastError(), "Launch acceleration calculation");
+        check_cuda(
+            cudaGetLastError(),
+            "Launch acceleration calculation"
+        );
     }
+
     // Members
+
     unsigned int count_;
 
-    dim3 block_size_;
-    dim3 grid_size_;
+    KernelConfig config_;
 
     nbody::Parameters physics_;
 
-    std::unique_ptr<Body, decltype(&cudaFree)> bodies_;
-    std::unique_ptr<Vector, decltype(&cudaFree)> acceleration_;
-    std::unique_ptr<Body[], decltype(&cudaFreeHost)> host_;
+    std::unique_ptr<double, decltype(&cudaFree)> x_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<double, decltype(&cudaFree)> y_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<double, decltype(&cudaFree)> z_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<double, decltype(&cudaFree)> vx_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<double, decltype(&cudaFree)> vy_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<double, decltype(&cudaFree)> vz_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<double, decltype(&cudaFree)> mass_{
+        device_buffer<double>(0)
+    };
+
+    std::unique_ptr<Vector, decltype(&cudaFree)> acceleration_{
+        device_buffer<Vector>(0)
+    };
 };
 
 } // namespace
+
 
 int main(int argc, char** argv) {
     using namespace nbody;
     try {
         const auto options = parse_options(argc, argv, true);
-        if (options.block_size != TILE_SIZE * TILE_SIZE)
-            throw std::invalid_argument("gpu-optim uses 16 x 16 tiles. Set --block-size 256.");
-        int device = 0;
-        int max_threads = 0;
-        check_cuda(cudaGetDevice(&device), "Select a CUDA device");
-        check_cuda(cudaDeviceGetAttribute(&max_threads, cudaDevAttrMaxThreadsPerBlock, device),
-                   "Read the device block size limit");
-        if (options.block_size > static_cast<unsigned int>(max_threads))
-            throw std::invalid_argument("Block size exceeds the limit of this GPU.");
+        KernelConfig config;
+        config.block_size = options.block_size;
 
         const auto initial = make_initial_conditions(options.initial, options.physics);
         EnergyReport report(diagnostics(initial.state, options.physics).total_energy());
 
-        GpuSimulation simulation(static_cast<unsigned int>(initial.state.size()), options.physics);
-        simulation.prepare(initial.state);
+        GpuSimulation simulation(static_cast<unsigned int>(initial.state.size()), options.physics, config);
         State checkpoint(initial.state.size());
         Timings timings;
         Event gpu_start, compute_start, compute_end;
         gpu_start.record();
-        simulation.upload();
+        simulation.upload(initial.state);
+        simulation.upload_physics();
         compute_start.record();
         simulation.initialize_acceleration();
 
@@ -346,9 +667,9 @@ int main(int argc, char** argv) {
             timings.with_transfer += step == 0 ? compute_end.seconds_since(gpu_start) : compute;
 
             // We check this run's state after stopping the timer.
-            simulation.download();
+            simulation.download(checkpoint);
             check_cuda(cudaStreamSynchronize(nullptr), "Wait for the energy checkpoint");
-            report.observe(simulation.energy(checkpoint));
+            report.observe(diagnostics(checkpoint, options.physics).total_energy());
             step += batch;
         }
         return print_benchmark("gpu-optim", options, timings, report);

@@ -115,6 +115,7 @@ steps as the CPU run above.
 scripts/benchmark.sh gpu-naive --count 1024 --steps 20
 scripts/benchmark.sh gpu-coalesced-access --count 1024 --steps 20
 scripts/benchmark.sh gpu-optim --count 1024 --steps 20
+scripts/benchmark.sh gpu-advanced-optim --count 1024 --steps 20
 ```
 
 ## 5. Plot the results
@@ -130,7 +131,7 @@ files must have the same body count and step count.
 
 ```sh
 scripts/plot_benchmarks.py results/cpu-naive.json results/gpu-naive.json \
-  results/gpu-coalesced-access.json results/gpu-optim.json
+  results/gpu-coalesced-access.json results/gpu-optim.json results/gpu-advanced-optim.json
 ```
 
 The script saves one PNG per input in `results/plots/`. Each line joins the

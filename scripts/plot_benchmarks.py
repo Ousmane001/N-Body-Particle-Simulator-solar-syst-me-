@@ -19,6 +19,7 @@ COLORS = {
     "gpu-naive": "#B45309",
     "gpu-coalesced-access": "#C2410C",
     "gpu-optim": "#BE185D",
+    "gpu-advanced-optim": "#9D174D",
     "gpu-direct-soa": "#9A3412",
     "gpu-naive-aos": "#854D0E",
     "gpu-advanced_optim": "#9F1239",

@@ -12,6 +12,7 @@ Variants:
   gpu-naive             Engine/src/gpu/naive.cu (AoS)
   gpu-coalesced-access  Engine/src/gpu/coalesced_access.cu
   gpu-optim             Engine/src/gpu/optim.cu
+  gpu-advanced-optim    Engine/src/gpu/advanced_optim.cu
 
 GPU variants require the CUDA toolkit and an NVIDIA GPU.
 All benchmarks use the cluster scenario.
@@ -58,14 +59,14 @@ case "$variant" in
         variant=cpu-coalesced-access
         ;;
     gpu-advanced_optim)
-        variant=gpu-coalesced-access
+        variant=gpu-advanced-optim
         ;;
 esac
 case "$variant" in
     cpu-coalesced-access)
         target=nbody_cpu
         ;;
-    cpu-naive|gpu-naive|gpu-coalesced-access|gpu-optim)
+    cpu-naive|gpu-naive|gpu-coalesced-access|gpu-optim|gpu-advanced-optim)
         target="nbody_${variant//-/_}"
         ;;
     *)
