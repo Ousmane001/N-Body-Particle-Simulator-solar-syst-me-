@@ -149,6 +149,27 @@ compute-only time and the time including transfers. CPU variants use shades
 of blue, and GPU variants use warmer colors. The y-axis scale is shared
 across the images from the same run.
 
+### Plot runtime as the number of bodies grows
+
+Keep the step count fixed and save each JSON before the next benchmark of
+that algorithm replaces it.
+
+```sh
+mkdir -p results/scaling
+for count in 1024 2048 4096; do
+  for algo in gpu-pairwise gpu-pairwise-tiled; do
+    scripts/benchmark.sh "$algo" --count "$count" --steps 50 &&
+      cp "results/$algo.json" "results/scaling/$algo-n$count-s50.json"
+  done
+done
+scripts/plot_benchmarks.py --x-axis nbodies results/scaling/*-s50.json
+```
+
+The script writes two PNGs in `results/plots/`, one for compute time and one
+for compute time with transfers. Each image has one curve per algorithm.
+Use `--x-axis steps` to vary the number of steps at a fixed body count.
+Repeat runs with the same settings to plot their median at each point.
+
 ## Project layout
 
 - `Engine/` contains the force calculations, integration and benchmark output. [Engine guide](Engine/README.md)

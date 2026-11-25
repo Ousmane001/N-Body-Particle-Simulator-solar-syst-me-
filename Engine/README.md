@@ -200,3 +200,8 @@ time and the time including transfers. The same y-axis scale is used across
 the images, and each algorithm has a fixed color. Plotting requires Python 3
 and gnuplot, available via `brew install gnuplot` on macOS or
 `sudo apt install gnuplot` on Debian/Ubuntu.
+
+To plot one curve per algorithm, use `--x-axis nbodies` with JSONs that
+share the same `steps`, or `--x-axis steps` with JSONs that share the same
+`nbodies`. This produces one image per timing metric.
+[Example commands](../README.md#plot-runtime-as-the-number-of-bodies-grows)

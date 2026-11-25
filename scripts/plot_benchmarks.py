@@ -5,11 +5,13 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+from statistics import median
 import subprocess
 from tempfile import TemporaryDirectory
 
 
 METRICS = ("compute_seconds", "compute_with_transfer_seconds")
+AXIS_LABELS = {"nbodies": "Number of bodies", "steps": "Number of steps"}
 COLORS = {
     "cpu-naive": "#1D4ED8",
     "cpu-coalesced-access": "#087F9B",
@@ -29,7 +31,7 @@ COLORS = {
 }
 
 
-def load_results(paths):
+def load_results(paths, x_axis=None):
     reference = {}
     rows = []
     for path in paths:
@@ -40,11 +42,13 @@ def load_results(paths):
         if not isinstance(result, dict):
             raise ValueError(f"{path}: expected a JSON object")
 
-        # The first file sets the comparison size for the other runs.
-        for field in ("nbodies", "steps"):
+        # The first file sets the values that all runs must share.
+        for field in AXIS_LABELS:
             value = result.get(field)
             if type(value) is not int or value < 1:
                 raise ValueError(f"{path}: {field} must be a positive integer")
+            if field == x_axis:
+                continue
             expected = reference.setdefault(field, value)
             if value != expected:
                 raise ValueError(
@@ -60,14 +64,14 @@ def load_results(paths):
             if type(value) not in (int, float) or not 0 <= value < float("inf"):
                 raise ValueError(f"{path}: {field} must be a finite, nonnegative number")
             durations.append(value)
-        rows.append((path.stem, algo, *durations))
+        rows.append((path.stem, algo, *durations, result.get(x_axis)))
     return reference, rows
 
 
 def plot(gnuplot, reference, rows, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     # A common scale makes it easier to compare the curves across images.
-    y_max = max(max(compute, with_transfer) for _, _, compute, with_transfer in rows)
+    y_max = max(max(compute, with_transfer) for _, _, compute, with_transfer, _ in rows)
     with TemporaryDirectory(dir=output_dir) as temp_dir:
         workspace = Path(temp_dir)
         commands = [
@@ -85,7 +89,7 @@ def plot(gnuplot, reference, rows, output_dir):
         ]
         filenames = {}
         used = set()
-        for index, (stem, algo, compute, with_transfer) in enumerate(rows, start=1):
+        for index, (stem, algo, compute, with_transfer, _) in enumerate(rows, start=1):
             name = f"{stem}.png"
             suffix = 2
             while name in used:
@@ -115,12 +119,71 @@ def plot(gnuplot, reference, rows, output_dir):
             print(destination)
 
 
+def plot_scaling(gnuplot, x_axis, reference, rows, output_dir):
+    fixed_field, fixed_value = next(iter(reference.items()))
+    fixed_label = "bodies" if fixed_field == "nbodies" else "steps"
+    series = {}
+    for _, algo, compute, with_transfer, x in rows:
+        series.setdefault(algo, {}).setdefault(x, []).append((compute, with_transfer))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=output_dir) as temp_dir:
+        workspace = Path(temp_dir)
+        commands = [
+            "set encoding utf8",
+            "set terminal pngcairo noenhanced size 1000,600 font ',13'",
+            f"set xlabel '{AXIS_LABELS[x_axis]}'",
+            "set ylabel 'Time (s)'",
+            "set grid ytics linecolor rgb '#E2E8F0'",
+            "set key outside top center",
+            "set yrange [0:*]",
+        ]
+        curves = []
+        for index, (algo, points) in enumerate(sorted(series.items()), start=1):
+            filename = f"{index}.dat"
+            data = [f"x {json.dumps(algo, ensure_ascii=False)} transfer"]
+            # We use the median when the same point was measured several times.
+            for x, runs in sorted(points.items()):
+                compute, with_transfer = map(median, zip(*runs))
+                data.append(f"{x} {compute} {with_transfer}")
+            (workspace / filename).write_text("\n".join(data) + "\n", encoding="utf-8")
+            color = f"rgb '{COLORS[algo]}'" if algo in COLORS else str(index)
+            curves.append((filename, color))
+
+        filenames = []
+        for column, metric, title in zip((2, 3), METRICS, ("Compute only", "With memory transfers")):
+            image = f"scaling-{x_axis}-{fixed_value}-{fixed_label}-{metric}.png"
+            filenames.append(image)
+            lines = [
+                f"'{filename}' using 1:{column} with linespoints linewidth 3 pointtype 7 "
+                f"linecolor {color} title columnhead(2)"
+                for filename, color in curves
+            ]
+            commands.extend((
+                f"set title '{title} ({fixed_value} {fixed_label})'",
+                f"set output '{image}'",
+                "plot " + ", ".join(lines),
+                "unset output",
+            ))
+        subprocess.run(
+            [gnuplot], input="\n".join(commands) + "\n", encoding="utf-8", cwd=workspace, check=True
+        )
+        for name in filenames:
+            destination = output_dir / name
+            (workspace / name).replace(destination)
+            print(destination)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("json_files", nargs="+", type=Path, help="benchmark JSON summaries to compare")
+    parser.add_argument(
+        "--x-axis", choices=AXIS_LABELS,
+        help="plot one curve per algorithm, keeping the other field fixed",
+    )
     args = parser.parse_args()
     try:
-        reference, rows = load_results(args.json_files)
+        reference, rows = load_results(args.json_files, args.x_axis)
         gnuplot = shutil.which("gnuplot")
         if not gnuplot:
             parser.error(
@@ -128,7 +191,11 @@ def main():
                 "or 'sudo apt install gnuplot' on Debian/Ubuntu."
             )
         output_dir = Path(__file__).resolve().parents[1] / "results" / "plots"
-        plot(Path(gnuplot).resolve(), reference, rows, output_dir)
+        gnuplot = Path(gnuplot).resolve()
+        if args.x_axis:
+            plot_scaling(gnuplot, args.x_axis, reference, rows, output_dir)
+        else:
+            plot(gnuplot, reference, rows, output_dir)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
 
